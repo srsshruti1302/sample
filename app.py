@@ -68,6 +68,3 @@ if st.button("🔮 Predict Next Sales"):
     else:
         st.warning("⚠ AI Insight: Possible decline detected. Strategy review needed.")
 """)
-
-# Run Streamlit with public URL
-!streamlit run app.py & npx localtunnel --port 8501
