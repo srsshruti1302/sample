@@ -1,7 +1,3 @@
-# ===================== ONE CELL STREAMLIT BI DASHBOARD =====================
-
-# Install required libraries
-!pip -q install streamlit tensorflow scikit-learn matplotlib pandas localtunnel
 
 # Create dataset
 import pandas as pd
