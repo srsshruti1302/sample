@@ -1,28 +1,21 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 import plotly.graph_objects as go
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.ensemble import IsolationForest
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
 
-st.set_page_config(page_title="Executive BI Dashboard", layout="wide")
+st.set_page_config(page_title="AI Predictive BI Dashboard", layout="wide")
 
-# -----------------------------
-# HEADER
-# -----------------------------
-st.markdown("""
-    <style>
-    .big-title {font-size:28px; font-weight:600;}
-    .kpi-card {background-color:#111827; padding:20px; border-radius:10px;}
-    </style>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="big-title">📊 Executive Business Intelligence Dashboard</div>', unsafe_allow_html=True)
+st.title("🚀 AI-Powered Predictive Business Intelligence Dashboard")
 
 # -----------------------------
 # FILE UPLOAD
 # -----------------------------
 uploaded_files = st.file_uploader(
-    "Upload Business Data (Multiple CSV files allowed)",
+    "Upload Multiple CSV Files",
     type=["csv"],
     accept_multiple_files=True
 )
@@ -38,20 +31,14 @@ if uploaded_files:
     df = pd.concat(df_list, ignore_index=True)
 
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-    categorical_cols = df.select_dtypes(include='object').columns.tolist()
 
-    # -----------------------------
-    # SIDEBAR FILTERS
-    # -----------------------------
-    st.sidebar.header("📌 Filters")
-
-    if len(categorical_cols) > 0:
-        filter_column = st.sidebar.selectbox("Select Category Filter", categorical_cols)
-        unique_values = df[filter_column].dropna().unique()
-        selected_value = st.sidebar.multiselect("Choose Values", unique_values, default=unique_values)
-        df = df[df[filter_column].isin(selected_value)]
+    if not numeric_cols:
+        st.error("No numeric column found.")
+        st.stop()
 
     metric = st.sidebar.selectbox("Select KPI Metric", numeric_cols)
+
+    data = df[metric].values.reshape(-1,1)
 
     # -----------------------------
     # KPI SECTION
@@ -62,113 +49,128 @@ if uploaded_files:
     min_val = df[metric].min()
 
     col1, col2, col3, col4 = st.columns(4)
-
-    col1.metric("💰 Total", f"{total:,.2f}")
-    col2.metric("📈 Average", f"{avg:,.2f}")
-    col3.metric("⬆ Maximum", f"{max_val:,.2f}")
-    col4.metric("⬇ Minimum", f"{min_val:,.2f}")
+    col1.metric("Total", f"{total:,.2f}")
+    col2.metric("Average", f"{avg:,.2f}")
+    col3.metric("Maximum", f"{max_val:,.2f}")
+    col4.metric("Minimum", f"{min_val:,.2f}")
 
     st.markdown("---")
 
     # -----------------------------
-    # MAIN CHART AREA
+    # ANOMALY DETECTION
     # -----------------------------
-    colA, colB = st.columns(2)
-
-    with colA:
-        fig_trend = px.line(
-            df,
-            y=metric,
-            color="Source_File",
-            title="Performance Trend",
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig_trend, use_container_width=True)
-
-    with colB:
-        fig_dist = px.histogram(
-            df,
-            x=metric,
-            color="Source_File",
-            title="Distribution Analysis",
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig_dist, use_container_width=True)
+    iso = IsolationForest(contamination=0.05, random_state=42)
+    df["Anomaly"] = iso.fit_predict(data)
+    anomalies = df[df["Anomaly"] == -1]
 
     # -----------------------------
-    # CONTRIBUTION PIE
+    # LSTM FORECASTING
     # -----------------------------
-    summary = df.groupby("Source_File")[metric].sum().reset_index()
+    scaler = MinMaxScaler()
+    scaled_data = scaler.fit_transform(data)
 
-    fig_pie = px.pie(
-        summary,
-        names="Source_File",
-        values=metric,
-        title="Revenue Contribution by Data Source",
+    sequence_length = 10
+
+    X = []
+    y = []
+
+    for i in range(sequence_length, len(scaled_data)):
+        X.append(scaled_data[i-sequence_length:i])
+        y.append(scaled_data[i])
+
+    X = np.array(X)
+    y = np.array(y)
+
+    model = Sequential()
+    model.add(LSTM(50, input_shape=(X.shape[1], 1)))
+    model.add(Dense(1))
+    model.compile(optimizer="adam", loss="mse")
+
+    model.fit(X, y, epochs=10, batch_size=16, verbose=0)
+
+    last_sequence = scaled_data[-sequence_length:]
+    future_predictions = []
+    current_sequence = last_sequence
+
+    for _ in range(10):
+        prediction = model.predict(current_sequence.reshape(1,sequence_length,1), verbose=0)
+        future_predictions.append(prediction[0,0])
+        current_sequence = np.append(current_sequence[1:], prediction)
+
+    future_predictions = scaler.inverse_transform(
+        np.array(future_predictions).reshape(-1,1)
+    )
+
+    # -----------------------------
+    # INTERACTIVE PLOT
+    # -----------------------------
+    fig = go.Figure()
+
+    # Actual
+    fig.add_trace(go.Scatter(
+        y=df[metric],
+        mode='lines',
+        name="Actual"
+    ))
+
+    # Anomalies
+    fig.add_trace(go.Scatter(
+        x=anomalies.index,
+        y=anomalies[metric],
+        mode='markers',
+        name="Anomaly",
+        marker=dict(color="red", size=8)
+    ))
+
+    # Forecast
+    future_index = list(range(len(df), len(df)+10))
+
+    fig.add_trace(go.Scatter(
+        x=future_index,
+        y=future_predictions.flatten(),
+        mode='lines',
+        name="LSTM Forecast",
+        line=dict(color="green")
+    ))
+
+    fig.update_layout(
+        title="LSTM Forecast + Anomaly Detection",
         template="plotly_dark"
     )
 
-    st.plotly_chart(fig_pie, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
     # -----------------------------
-    # CATEGORY PERFORMANCE
+    # AI WRITTEN REPORT
     # -----------------------------
-    if len(categorical_cols) > 0:
-        category = st.selectbox("Select Category for Comparison", categorical_cols)
+    st.markdown("## 🧠 AI Generated Business Report")
 
-        grouped = df.groupby(category)[metric].mean().reset_index()
+    trend_direction = "increasing" if future_predictions[-1] > avg else "declining"
 
-        fig_bar = px.bar(
-            grouped,
-            x=category,
-            y=metric,
-            title="Category Performance Comparison",
-            template="plotly_dark"
-        )
+    report = f"""
+### Executive Summary
 
-        st.plotly_chart(fig_bar, use_container_width=True)
+The system analyzed **{len(df)} records** across **{len(uploaded_files)} datasets**.
 
-    # -----------------------------
-    # CORRELATION MATRIX
-    # -----------------------------
-    if len(numeric_cols) > 1:
+- Total {metric}: **{round(total,2)}**
+- Average {metric}: **{round(avg,2)}**
+- Maximum value observed: **{round(max_val,2)}**
+- Minimum value observed: **{round(min_val,2)}**
 
-        corr = df[numeric_cols].corr()
+### Anomaly Detection
+**{len(anomalies)} abnormal points** were detected using Isolation Forest,
+indicating potential risk or unusual fluctuations.
 
-        fig_heat = go.Figure(data=go.Heatmap(
-            z=corr.values,
-            x=corr.columns,
-            y=corr.columns
-        ))
+### Forecasting Insight
+The LSTM deep learning model predicts a **{trend_direction} trend**
+for the next 10 periods.
 
-        fig_heat.update_layout(
-            title="Correlation Matrix",
-            template="plotly_dark"
-        )
+### Strategic Recommendation
+If this projected trend continues, strategic planning and resource allocation
+should align accordingly while monitoring anomaly risk areas.
+"""
 
-        st.plotly_chart(fig_heat, use_container_width=True)
-
-    # -----------------------------
-    # EXECUTIVE INSIGHTS SECTION
-    # -----------------------------
-    st.markdown("### 🧠 Executive Insights")
-
-    if total > avg * len(df):
-        insight = "Overall performance indicates strong cumulative growth."
-    else:
-        insight = "Performance consistency needs monitoring."
-
-    if max_val > avg * 1.5:
-        anomaly = "High positive spike detected in dataset."
-    else:
-        anomaly = "No extreme spikes detected."
-
-    st.info(f"""
-    • Total {metric} across uploaded files: {total:,.2f}  
-    • Average {metric}: {avg:,.2f}  
-    • Insight: {insight}  
-    • Risk Flag: {anomaly}
-    """)
+    st.success(report)
 
 else:
-    st.info("Upload business datasets to generate executive dashboard.")
+    st.info("Upload CSV files to generate AI-powered insights.")
