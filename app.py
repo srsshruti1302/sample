@@ -42,7 +42,7 @@ for file in uploaded_files:
 df = pd.concat(df_list, ignore_index=True)
 
 # =====================================================
-# DATA PREP
+# DATA PREPARATION
 # =====================================================
 
 numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
@@ -101,10 +101,10 @@ with tab1:
     col4.metric("Min", f"{min_val:,.2f}")
 
     # =====================================================
-    # AREA CHART (NEW)
+    # AREA CHART (TREND VIEW)
     # =====================================================
 
-    st.subheader("📈 Area Trend View")
+    st.subheader("📈 Area Trend Analysis")
 
     fig_area = px.area(
         df_filtered,
@@ -115,32 +115,32 @@ with tab1:
 
     st.plotly_chart(fig_area, use_container_width=True)
 
-    
-# HISTOGRAM (Replaces Column Chart)
-# =====================================================
+    # =====================================================
+    # HISTOGRAM (DISTRIBUTION VIEW)
+    # =====================================================
 
-st.subheader("📊 Distribution Analysis (Histogram)")
+    st.subheader("📊 Distribution Analysis")
 
-fig_hist = px.histogram(
-    df_filtered,
-    x=metric,
-    nbins=30,
-    template="plotly_dark"
-)
+    fig_hist = px.histogram(
+        df_filtered,
+        x=metric,
+        nbins=30,
+        template="plotly_dark"
+    )
 
-fig_hist.update_layout(
-    xaxis_title=metric,
-    yaxis_title="Frequency"
-)
+    fig_hist.update_layout(
+        xaxis_title=metric,
+        yaxis_title="Frequency"
+    )
 
-st.plotly_chart(fig_hist, use_container_width=True)
+    st.plotly_chart(fig_hist, use_container_width=True)
 
     # =====================================================
-    # TREEMAP
+    # TREEMAP (CATEGORICAL VIEW)
     # =====================================================
 
     if categorical_cols:
-        st.subheader("🌳 Hierarchical Contribution")
+        st.subheader("🌳 Hierarchical Contribution View")
 
         cat = categorical_cols[0]
         tree_data = df_filtered.groupby(cat)[metric].sum().reset_index()
@@ -155,7 +155,7 @@ st.plotly_chart(fig_hist, use_container_width=True)
         st.plotly_chart(fig_tree, use_container_width=True)
 
 # =====================================================
-# TAB 2 – RISK INTELLIGENCE
+# TAB 2 – ANOMALY DETECTION
 # =====================================================
 
 with tab2:
@@ -165,7 +165,9 @@ with tab2:
         iso = IsolationForest(contamination=0.05, random_state=42)
         df_filtered["Anomaly"] = iso.fit_predict(df_filtered[[metric]])
 
-        fig = px.scatter(
+        st.subheader("🚨 Anomaly Detection (Isolation Forest)")
+
+        fig_anomaly = px.scatter(
             df_filtered,
             x=df_filtered.index,
             y=metric,
@@ -173,10 +175,10 @@ with tab2:
             template="plotly_dark"
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig_anomaly, use_container_width=True)
 
 # =====================================================
-# TAB 3 – PREDICTIVE INTELLIGENCE
+# TAB 3 – FORECASTING
 # =====================================================
 
 with tab3:
@@ -196,13 +198,22 @@ with tab3:
                              len(df_filtered)+future_steps).reshape(-1,1)
         future_pred = model.predict(future_x)
 
+        r2 = r2_score(y, y_pred)
+        rmse = np.sqrt(mean_squared_error(y, y_pred))
+
+        st.subheader("🔮 Forecasting Model (Linear Regression)")
+
         fig_forecast = go.Figure()
         fig_forecast.add_trace(go.Scatter(x=X.flatten(), y=y, mode="lines", name="Actual"))
         fig_forecast.add_trace(go.Scatter(x=X.flatten(), y=y_pred, mode="lines", name="Model Fit"))
         fig_forecast.add_trace(go.Scatter(x=future_x.flatten(), y=future_pred, mode="lines", name="Forecast"))
 
         fig_forecast.update_layout(template="plotly_dark")
+
         st.plotly_chart(fig_forecast, use_container_width=True)
+
+        st.write(f"R² Score: {round(r2,4)}")
+        st.write(f"RMSE: {round(rmse,4)}")
 
 # =====================================================
 # TAB 4 – STRATEGIC REPORT
@@ -210,22 +221,25 @@ with tab3:
 
 with tab4:
 
-    st.subheader("📋 Executive Summary")
+    st.subheader("📋 Executive Strategic Summary")
 
     report_points = [
         f"• Total records analyzed: {len(df_filtered)}",
-        f"• KPI selected: {metric}",
-        f"• Aggregate value: {round(total,2)}",
-        f"• Average performance: {round(avg,2)}",
-        f"• Maximum value observed: {round(max_val,2)}",
-        f"• Minimum value observed: {round(min_val,2)}",
-        "• Area chart highlights overall trend behaviour",
-        "• Column chart compares performance across timeline",
-        "• Treemap shows categorical contribution distribution",
-        "• Anomaly detection executed using Isolation Forest",
-        "• Predictive modeling performed using Linear Regression",
-        "• Forecast generated for next 10 periods",
-        "• Strategic recommendation: Monitor growth and variability closely"
+        f"• KPI selected for analysis: {metric}",
+        f"• Aggregate performance value: {round(total,2)}",
+        f"• Average performance across timeline: {round(avg,2)}",
+        f"• Maximum KPI value observed: {round(max_val,2)}",
+        f"• Minimum KPI value observed: {round(min_val,2)}",
+        "• Area chart highlights overall performance trend behaviour",
+        "• Histogram reveals data distribution and spread characteristics",
+        "• Treemap visualizes categorical contribution impact",
+        "• Isolation Forest used for anomaly detection (5% contamination)",
+        "• Detected anomalies may indicate operational risk or opportunity",
+        "• Linear Regression used for forecasting future KPI behaviour",
+        f"• Model R² score indicates explanatory strength of {round(r2,4)}",
+        f"• RMSE indicates forecasting error magnitude of {round(rmse,4)}",
+        "• Forecast generated for next 10 time periods",
+        "• Strategic recommendation: Monitor volatility and focus on sustainable growth drivers"
     ]
 
     for point in report_points:
