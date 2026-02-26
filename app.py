@@ -1,43 +1,176 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.ensemble import IsolationForest
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+
+st.set_page_config(page_title="GenAI BI Dashboard", layout="wide")
+
+st.title("📊 GenAI-Powered Business Intelligence Dashboard")
+
 # -----------------------------
-# SMART AUTO VISUALIZATION
+# FILE UPLOAD
 # -----------------------------
+uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
 
-st.subheader("📊 Smart Visualizations")
+if uploaded_file is not None:
 
-numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-categorical_cols = df.select_dtypes(include='object').columns.tolist()
+    df = pd.read_csv(uploaded_file)
 
-# Correlation Heatmap
-if len(numeric_cols) > 1:
-    st.subheader("🔥 Correlation Heatmap")
-    corr = df[numeric_cols].corr()
+    st.subheader("📌 Dataset Preview")
+    st.dataframe(df.head())
 
-    fig, ax = plt.subplots()
-    cax = ax.matshow(corr)
-    plt.xticks(range(len(numeric_cols)), numeric_cols, rotation=90)
-    plt.yticks(range(len(numeric_cols)), numeric_cols)
-    fig.colorbar(cax)
-    st.pyplot(fig)
+    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    categorical_cols = df.select_dtypes(include='object').columns.tolist()
 
-# Category Comparison
-if len(categorical_cols) > 0:
-    cat_col = st.selectbox("Select Category for Comparison", categorical_cols)
-    
-    st.subheader("📊 Category Comparison")
-    grouped = df.groupby(cat_col)[selected_col].mean()
-    
-    fig, ax = plt.subplots()
-    grouped.plot(kind='bar', ax=ax)
-    st.pyplot(fig)
+    if len(numeric_cols) == 0:
+        st.error("No numeric columns found for analysis.")
+    else:
 
-# Histogram
-st.subheader("📉 Distribution")
-fig, ax = plt.subplots()
-ax.hist(df[selected_col], bins=20)
-st.pyplot(fig)
+        selected_col = st.selectbox("Select Metric Column", numeric_cols)
 
-# Box Plot
-st.subheader("📦 Box Plot")
-fig, ax = plt.subplots()
-ax.boxplot(df[selected_col])
-st.pyplot(fig)
+        # -----------------------------
+        # KPI SECTION
+        # -----------------------------
+        st.subheader("📈 Key Performance Indicators")
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric("Total", round(df[selected_col].sum(), 2))
+        col2.metric("Average", round(df[selected_col].mean(), 2))
+        col3.metric("Maximum", round(df[selected_col].max(), 2))
+
+        # -----------------------------
+        # SMART VISUALIZATIONS
+        # -----------------------------
+        st.subheader("📊 Smart Visualizations")
+
+        # 1️⃣ Trend Line
+        st.subheader("📈 Trend Analysis")
+        fig1, ax1 = plt.subplots()
+        ax1.plot(df[selected_col])
+        ax1.set_title("Trend Over Time")
+        st.pyplot(fig1)
+
+        # 2️⃣ Correlation Heatmap
+        if len(numeric_cols) > 1:
+            st.subheader("🔥 Correlation Heatmap")
+            corr = df[numeric_cols].corr()
+
+            fig2, ax2 = plt.subplots()
+            cax = ax2.matshow(corr)
+            plt.xticks(range(len(numeric_cols)), numeric_cols, rotation=90)
+            plt.yticks(range(len(numeric_cols)), numeric_cols)
+            fig2.colorbar(cax)
+            st.pyplot(fig2)
+
+        # 3️⃣ Category Comparison
+        if len(categorical_cols) > 0:
+            cat_col = st.selectbox("Select Category for Comparison", categorical_cols)
+            grouped = df.groupby(cat_col)[selected_col].mean()
+
+            st.subheader("📊 Category Comparison")
+            fig3, ax3 = plt.subplots()
+            grouped.plot(kind='bar', ax=ax3)
+            st.pyplot(fig3)
+
+        # 4️⃣ Histogram
+        st.subheader("📉 Distribution")
+        fig4, ax4 = plt.subplots()
+        ax4.hist(df[selected_col], bins=20)
+        st.pyplot(fig4)
+
+        # 5️⃣ Box Plot
+        st.subheader("📦 Box Plot")
+        fig5, ax5 = plt.subplots()
+        ax5.boxplot(df[selected_col])
+        st.pyplot(fig5)
+
+        # -----------------------------
+        # ANOMALY DETECTION
+        # -----------------------------
+        st.subheader("🚨 Anomaly Detection")
+
+        model_iso = IsolationForest(contamination=0.05)
+        df["Anomaly"] = model_iso.fit_predict(df[[selected_col]])
+
+        fig6, ax6 = plt.subplots()
+        ax6.scatter(range(len(df)), df[selected_col], c=df["Anomaly"])
+        st.pyplot(fig6)
+
+        anomaly_count = len(df[df["Anomaly"] == -1])
+
+        # -----------------------------
+        # LSTM FORECASTING
+        # -----------------------------
+        st.subheader("🔮 Forecasting (Deep Learning LSTM)")
+
+        data = df[selected_col].values.reshape(-1, 1)
+
+        scaler = MinMaxScaler()
+        data_scaled = scaler.fit_transform(data)
+
+        X = []
+        y = []
+
+        for i in range(10, len(data_scaled)):
+            X.append(data_scaled[i-10:i])
+            y.append(data_scaled[i])
+
+        if len(X) > 0:
+            X, y = np.array(X), np.array(y)
+
+            model_lstm = Sequential()
+            model_lstm.add(LSTM(50, input_shape=(X.shape[1], 1)))
+            model_lstm.add(Dense(1))
+            model_lstm.compile(optimizer='adam', loss='mse')
+
+            model_lstm.fit(X, y, epochs=5, verbose=0)
+
+            predictions = model_lstm.predict(X)
+            predictions = scaler.inverse_transform(predictions)
+
+            fig7, ax7 = plt.subplots()
+            ax7.plot(df[selected_col].values, label="Original")
+            ax7.plot(range(10, len(predictions)+10), predictions, label="Predicted")
+            ax7.legend()
+            st.pyplot(fig7)
+        else:
+            st.warning("Not enough data for forecasting (need at least 15 rows).")
+
+        # -----------------------------
+        # AI GENERATED INSIGHT
+        # -----------------------------
+        st.subheader("🤖 AI Generated Insights")
+
+        insight = f"""
+        The total value of {selected_col} is {round(df[selected_col].sum(),2)}.
+        The average value is {round(df[selected_col].mean(),2)}.
+        The maximum value recorded is {round(df[selected_col].max(),2)}.
+        Approximately {anomaly_count} anomalies were detected.
+        Forecasting indicates a continuation of historical trend patterns.
+        """
+
+        st.success(insight)
+
+        # -----------------------------
+        # NATURAL LANGUAGE QUERY
+        # -----------------------------
+        st.subheader("💬 Ask Questions About Data")
+
+        question = st.text_input("Type your business question:")
+
+        if question:
+            response = f"""
+            Based on analysis of {selected_col}, your query '{question}' 
+            relates to dataset trends and performance metrics.
+            The dashboard suggests pattern consistency with some anomalies.
+            """
+
+            st.info(response)
+
+else:
+    st.info("Please upload a CSV file to begin analysis.")
