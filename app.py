@@ -12,38 +12,38 @@ from sklearn.metrics import r2_score, mean_squared_error
 # PAGE CONFIG
 # =====================================================
 
-st.set_page_config(page_title="AI Executive BI System", layout="wide")
-st.title("🚀 AI-Powered Executive Business Intelligence System")
+st.set_page_config(page_title="AI Executive Analytics Suite", layout="wide")
+st.title("🚀 AI-Powered Executive Analytics Suite")
 
 # =====================================================
 # FILE UPLOAD
 # =====================================================
 
 uploaded_files = st.file_uploader(
-    "Upload Business Data (Multiple CSV files allowed)",
+    "Upload Business CSV Files",
     type=["csv"],
     accept_multiple_files=True
 )
 
 if not uploaded_files:
-    st.info("Upload CSV files to start analysis.")
+    st.info("Upload CSV files to begin.")
     st.stop()
 
 df_list = []
 
 for file in uploaded_files:
     try:
-        temp_df = pd.read_csv(file, encoding="utf-8")
+        temp = pd.read_csv(file, encoding="utf-8")
     except:
-        temp_df = pd.read_csv(file, encoding="latin1")
+        temp = pd.read_csv(file, encoding="latin1")
 
-    temp_df["Source_File"] = file.name
-    df_list.append(temp_df)
+    temp["Source_File"] = file.name
+    df_list.append(temp)
 
 df = pd.concat(df_list, ignore_index=True)
 
 # =====================================================
-# DATA PREPARATION
+# DATA PREP
 # =====================================================
 
 numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
@@ -63,19 +63,19 @@ df = df.replace([np.inf, -np.inf], np.nan)
 # =====================================================
 
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📊 Overview",
-    "🚨 Risk & Anomaly",
-    "🔮 Forecasting & Segmentation",
-    "🧠 Executive Report"
+    "📊 Executive Overview",
+    "🚨 Risk Intelligence",
+    "🔮 Predictive Intelligence",
+    "🧠 Strategic Report"
 ])
 
 # =====================================================
-# TAB 1 – OVERVIEW
+# TAB 1 – EXECUTIVE OVERVIEW
 # =====================================================
 
 with tab1:
 
-    st.subheader("📌 KPI Overview")
+    st.subheader("📌 KPI Summary")
 
     total = df[metric].sum(skipna=True)
     avg = df[metric].mean(skipna=True)
@@ -85,61 +85,89 @@ with tab1:
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total", f"{total:,.2f}")
     col2.metric("Average", f"{avg:,.2f}")
-    col3.metric("Maximum", f"{max_val:,.2f}")
-    col4.metric("Minimum", f"{min_val:,.2f}")
+    col3.metric("Max", f"{max_val:,.2f}")
+    col4.metric("Min", f"{min_val:,.2f}")
 
-    growth_percent = ((max_val - min_val) / abs(min_val)) * 100 if min_val != 0 else 0
-    st.metric("Overall Growth %", f"{round(growth_percent,2)}%")
+    growth = ((max_val - min_val) / abs(min_val))*100 if min_val != 0 else 0
+    st.metric("Growth %", f"{round(growth,2)}%")
 
-    st.markdown("---")
+    # =================================================
+    # GAUGE CHART
+    # =================================================
 
-    # Trend Chart
-    fig_line = px.line(df, y=metric, color="Source_File",
-                       template="plotly_dark",
-                       title="Trend Analysis")
-    st.plotly_chart(fig_line, use_container_width=True)
+    st.subheader("🎯 Performance Gauge")
 
-    # Moving Average
-    df["Moving_Avg"] = df[metric].rolling(5).mean()
+    fig_gauge = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=avg,
+        title={'text': f"Average {metric}"},
+        gauge={
+            'axis': {'range': [min_val, max_val]},
+            'bar': {'color': "cyan"}
+        }
+    ))
 
-    fig_ma = px.line(df, y="Moving_Avg",
-                     template="plotly_dark",
-                     title="5-Period Moving Average")
-    st.plotly_chart(fig_ma, use_container_width=True)
+    fig_gauge.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_gauge, use_container_width=True)
 
-    # CUMULATIVE GROWTH
-    df["Cumulative_Sum"] = df[metric].cumsum()
+    # =================================================
+    # WATERFALL CHART
+    # =================================================
 
-    fig_cum = px.line(df, y="Cumulative_Sum",
-                      template="plotly_dark",
-                      title="Cumulative Growth Trend")
-    st.plotly_chart(fig_cum, use_container_width=True)
+    st.subheader("💰 Contribution Waterfall")
 
-    # VOLATILITY (Rolling Std Dev)
-    df["Rolling_STD"] = df[metric].rolling(5).std()
+    sample = df[metric].dropna().head(6)
 
-    fig_vol = px.line(df, y="Rolling_STD",
-                      template="plotly_dark",
-                      title="Volatility (Rolling Standard Deviation)")
-    st.plotly_chart(fig_vol, use_container_width=True)
+    fig_water = go.Figure(go.Waterfall(
+        y=sample,
+        measure=["relative"]*len(sample)
+    ))
 
-    # Histogram
-    fig_hist = px.histogram(df, x=metric,
-                            color="Source_File",
-                            nbins=30,
-                            template="plotly_dark",
-                            title="Metric Distribution")
-    st.plotly_chart(fig_hist, use_container_width=True)
+    fig_water.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_water, use_container_width=True)
+
+    # =================================================
+    # AREA CHART
+    # =================================================
+
+    st.subheader("📈 Area Performance Curve")
+
+    fig_area = px.area(df, y=metric, template="plotly_dark")
+    st.plotly_chart(fig_area, use_container_width=True)
+
+    # =================================================
+    # RADAR CHART
+    # =================================================
+
+    if len(numeric_cols) >= 3:
+
+        st.subheader("🕸 Multi-Metric Radar")
+
+        radar_vals = df[numeric_cols[:5]].mean()
+
+        fig_radar = go.Figure()
+        fig_radar.add_trace(go.Scatterpolar(
+            r=radar_vals.values,
+            theta=radar_vals.index,
+            fill='toself'
+        ))
+
+        fig_radar.update_layout(
+            polar=dict(radialaxis=dict(visible=True)),
+            template="plotly_dark"
+        )
+
+        st.plotly_chart(fig_radar, use_container_width=True)
 
 # =====================================================
-# TAB 2 – ANOMALY DETECTION
+# TAB 2 – RISK INTELLIGENCE
 # =====================================================
 
 with tab2:
 
     st.subheader("🚨 Anomaly Detection")
 
-    clean_df = df.dropna(subset=[metric]).copy()
+    clean_df = df.dropna(subset=[metric])
 
     if len(clean_df) > 10:
 
@@ -148,35 +176,23 @@ with tab2:
 
         anomalies = clean_df[clean_df["Anomaly"] == -1]
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=clean_df.index.tolist(),
-            y=clean_df[metric].tolist(),
-            mode="markers",
-            name="Normal"
-        ))
+        fig = px.scatter(
+            clean_df,
+            y=metric,
+            color=clean_df["Anomaly"].astype(str),
+            template="plotly_dark"
+        )
 
-        fig.add_trace(go.Scatter(
-            x=anomalies.index.tolist(),
-            y=anomalies[metric].tolist(),
-            mode="markers",
-            name="Anomaly"
-        ))
-
-        fig.update_layout(template="plotly_dark")
         st.plotly_chart(fig, use_container_width=True)
-
-        st.success(f"Total anomalies detected: {len(anomalies)}")
-    else:
-        st.warning("Not enough data.")
+        st.success(f"Anomalies detected: {len(anomalies)}")
 
 # =====================================================
-# TAB 3 – FORECASTING + SEGMENTATION
+# TAB 3 – PREDICTIVE INTELLIGENCE
 # =====================================================
 
 with tab3:
 
-    st.subheader("🔮 Forecasting")
+    st.subheader("🔮 Forecast Model")
 
     forecast_df = df.dropna(subset=[metric]).reset_index(drop=True)
 
@@ -203,29 +219,46 @@ with tab3:
         fig_forecast.update_layout(template="plotly_dark")
         st.plotly_chart(fig_forecast, use_container_width=True)
 
-        st.info(f"R² Score: {round(r2_score(y,y_pred),3)}")
+        st.info(f"R²: {round(r2_score(y,y_pred),3)}")
         st.info(f"MSE: {round(mean_squared_error(y,y_pred),3)}")
 
     # Clustering
     if len(numeric_cols) >= 2:
 
-        cluster_df = df[numeric_cols].dropna().copy()
+        cluster_df = df[numeric_cols].dropna()
 
         if len(cluster_df) > 10:
 
             kmeans = KMeans(n_clusters=3, random_state=42)
             cluster_df["Cluster"] = kmeans.fit_predict(cluster_df)
 
-            fig_cluster = px.scatter(cluster_df,
-                                     x=numeric_cols[0],
-                                     y=numeric_cols[1],
-                                     color="Cluster",
-                                     template="plotly_dark",
-                                     title="Business Segmentation")
+            fig_cluster = px.scatter(
+                cluster_df,
+                x=numeric_cols[0],
+                y=numeric_cols[1],
+                color="Cluster",
+                template="plotly_dark"
+            )
+
             st.plotly_chart(fig_cluster, use_container_width=True)
 
+    # Correlation Heatmap
+    if len(numeric_cols) > 1:
+
+        corr = df[numeric_cols].corr()
+
+        fig_heat = go.Figure(data=go.Heatmap(
+            z=corr.values,
+            x=corr.columns,
+            y=corr.columns,
+            colorscale="Viridis"
+        ))
+
+        fig_heat.update_layout(template="plotly_dark")
+        st.plotly_chart(fig_heat, use_container_width=True)
+
 # =====================================================
-# TAB 4 – EXECUTIVE SUMMARY
+# TAB 4 – STRATEGIC REPORT
 # =====================================================
 
 with tab4:
@@ -233,10 +266,11 @@ with tab4:
     st.subheader("🧠 Executive Summary")
 
     report = f"""
-    Total Records: {len(df)}
+    Total Records Analyzed: {len(df)}
     KPI Selected: {metric}
     Total Value: {round(total,2)}
-    Forecast Trend: Strategic monitoring recommended.
+    Forecast suggests strategic trend monitoring.
+    Risk detection and segmentation completed.
     """
 
     st.success(report)
