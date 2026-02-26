@@ -1,176 +1,141 @@
-import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-from sklearn.preprocessing import MinMaxScaler
+import matplotlib.pyplot as plt
+import seaborn as sns
+import glob
 from sklearn.ensemble import IsolationForest
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
+from sklearn.linear_model import LinearRegression
 
-st.set_page_config(page_title="AI Predictive BI Dashboard", layout="wide")
+# -----------------------------------
+# 1️⃣ LOAD MULTIPLE CSV FILES
+# -----------------------------------
 
-st.title("🚀 AI-Powered Predictive Business Intelligence Dashboard")
+file_paths = glob.glob("*.csv")
 
-# -----------------------------
-# FILE UPLOAD
-# -----------------------------
-uploaded_files = st.file_uploader(
-    "Upload Multiple CSV Files",
-    type=["csv"],
-    accept_multiple_files=True
-)
+df_list = []
 
-if uploaded_files:
+for file in file_paths:
+    temp_df = pd.read_csv(file)
+    temp_df["Source_File"] = file
+    df_list.append(temp_df)
 
-    df_list = []
-    for file in uploaded_files:
-        temp_df = pd.read_csv(file)
-        temp_df["Source_File"] = file.name
-        df_list.append(temp_df)
+df = pd.concat(df_list, ignore_index=True)
 
-    df = pd.concat(df_list, ignore_index=True)
+print("Files Loaded:", len(file_paths))
+print("Combined Shape:", df.shape)
 
-    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+# -----------------------------------
+# 2️⃣ SELECT NUMERIC COLUMN
+# -----------------------------------
 
-    if not numeric_cols:
-        st.error("No numeric column found.")
-        st.stop()
+numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 
-    metric = st.sidebar.selectbox("Select KPI Metric", numeric_cols)
+if not numeric_cols:
+    print("No numeric columns found.")
+    exit()
 
-    data = df[metric].values.reshape(-1,1)
+metric = numeric_cols[0]
+print("\nSelected KPI Metric:", metric)
 
-    # -----------------------------
-    # KPI SECTION
-    # -----------------------------
-    total = df[metric].sum()
-    avg = df[metric].mean()
-    max_val = df[metric].max()
-    min_val = df[metric].min()
+# -----------------------------------
+# 3️⃣ KPI CALCULATIONS
+# -----------------------------------
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total", f"{total:,.2f}")
-    col2.metric("Average", f"{avg:,.2f}")
-    col3.metric("Maximum", f"{max_val:,.2f}")
-    col4.metric("Minimum", f"{min_val:,.2f}")
+total = df[metric].sum()
+avg = df[metric].mean()
+max_val = df[metric].max()
+min_val = df[metric].min()
 
-    st.markdown("---")
+print("\n--- KPI SUMMARY ---")
+print("Total:", round(total,2))
+print("Average:", round(avg,2))
+print("Maximum:", round(max_val,2))
+print("Minimum:", round(min_val,2))
 
-    # -----------------------------
-    # ANOMALY DETECTION
-    # -----------------------------
-    iso = IsolationForest(contamination=0.05, random_state=42)
-    df["Anomaly"] = iso.fit_predict(data)
-    anomalies = df[df["Anomaly"] == -1]
+# -----------------------------------
+# 4️⃣ ANOMALY DETECTION
+# -----------------------------------
 
-    # -----------------------------
-    # LSTM FORECASTING
-    # -----------------------------
-    scaler = MinMaxScaler()
-    scaled_data = scaler.fit_transform(data)
+iso = IsolationForest(contamination=0.05, random_state=42)
+df["Anomaly"] = iso.fit_predict(df[[metric]])
 
-    sequence_length = 10
+anomalies = df[df["Anomaly"] == -1]
 
-    X = []
-    y = []
+print("\nAnomalies Detected:", len(anomalies))
 
-    for i in range(sequence_length, len(scaled_data)):
-        X.append(scaled_data[i-sequence_length:i])
-        y.append(scaled_data[i])
+# -----------------------------------
+# 5️⃣ FORECASTING (Linear Regression)
+# -----------------------------------
 
-    X = np.array(X)
-    y = np.array(y)
+df = df.reset_index()
+X = df.index.values.reshape(-1,1)
+y = df[metric].values
 
-    model = Sequential()
-    model.add(LSTM(50, input_shape=(X.shape[1], 1)))
-    model.add(Dense(1))
-    model.compile(optimizer="adam", loss="mse")
+model = LinearRegression()
+model.fit(X,y)
 
-    model.fit(X, y, epochs=10, batch_size=16, verbose=0)
+future_steps = 10
+future_index = np.arange(len(df), len(df)+future_steps).reshape(-1,1)
+future_pred = model.predict(future_index)
 
-    last_sequence = scaled_data[-sequence_length:]
-    future_predictions = []
-    current_sequence = last_sequence
+# -----------------------------------
+# 6️⃣ VISUALIZATIONS
+# -----------------------------------
 
-    for _ in range(10):
-        prediction = model.predict(current_sequence.reshape(1,sequence_length,1), verbose=0)
-        future_predictions.append(prediction[0,0])
-        current_sequence = np.append(current_sequence[1:], prediction)
+plt.figure(figsize=(18,12))
 
-    future_predictions = scaler.inverse_transform(
-        np.array(future_predictions).reshape(-1,1)
-    )
+# 1. Trend Line
+plt.subplot(2,3,1)
+plt.plot(df[metric])
+plt.title("Trend Analysis")
 
-    # -----------------------------
-    # INTERACTIVE PLOT
-    # -----------------------------
-    fig = go.Figure()
+# 2. Histogram
+plt.subplot(2,3,2)
+plt.hist(df[metric], bins=20)
+plt.title("Distribution")
 
-    # Actual
-    fig.add_trace(go.Scatter(
-        y=df[metric],
-        mode='lines',
-        name="Actual"
-    ))
+# 3. Scatter Plot
+plt.subplot(2,3,3)
+plt.scatter(df.index, df[metric])
+plt.title("Scatter Plot (Index vs Metric)")
 
-    # Anomalies
-    fig.add_trace(go.Scatter(
-        x=anomalies.index,
-        y=anomalies[metric],
-        mode='markers',
-        name="Anomaly",
-        marker=dict(color="red", size=8)
-    ))
+# 4. Anomaly Plot
+plt.subplot(2,3,4)
+plt.scatter(df.index, df[metric], label="Normal")
+plt.scatter(anomalies.index, anomalies[metric], color="red", label="Anomaly")
+plt.legend()
+plt.title("Anomaly Detection (Isolation Forest)")
 
-    # Forecast
-    future_index = list(range(len(df), len(df)+10))
+# 5. Forecast Plot
+plt.subplot(2,3,5)
+plt.plot(df.index, df[metric], label="Actual")
+plt.plot(range(len(df), len(df)+future_steps), future_pred, color="green", label="Forecast")
+plt.legend()
+plt.title("Forecasting (Linear Regression)")
 
-    fig.add_trace(go.Scatter(
-        x=future_index,
-        y=future_predictions.flatten(),
-        mode='lines',
-        name="LSTM Forecast",
-        line=dict(color="green")
-    ))
-
-    fig.update_layout(
-        title="LSTM Forecast + Anomaly Detection",
-        template="plotly_dark"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # -----------------------------
-    # AI WRITTEN REPORT
-    # -----------------------------
-    st.markdown("## 🧠 AI Generated Business Report")
-
-    trend_direction = "increasing" if future_predictions[-1] > avg else "declining"
-
-    report = f"""
-### Executive Summary
-
-The system analyzed **{len(df)} records** across **{len(uploaded_files)} datasets**.
-
-- Total {metric}: **{round(total,2)}**
-- Average {metric}: **{round(avg,2)}**
-- Maximum value observed: **{round(max_val,2)}**
-- Minimum value observed: **{round(min_val,2)}**
-
-### Anomaly Detection
-**{len(anomalies)} abnormal points** were detected using Isolation Forest,
-indicating potential risk or unusual fluctuations.
-
-### Forecasting Insight
-The LSTM deep learning model predicts a **{trend_direction} trend**
-for the next 10 periods.
-
-### Strategic Recommendation
-If this projected trend continues, strategic planning and resource allocation
-should align accordingly while monitoring anomaly risk areas.
-"""
-
-    st.success(report)
-
+# 6. Correlation Heatmap
+plt.subplot(2,3,6)
+if len(numeric_cols) > 1:
+    corr = df[numeric_cols].corr()
+    sns.heatmap(corr, annot=True)
+    plt.title("Correlation Matrix")
 else:
-    st.info("Upload CSV files to generate AI-powered insights.")
+    plt.text(0.3,0.5,"Not enough numeric columns")
+    plt.title("Correlation Matrix")
+
+plt.tight_layout()
+plt.show()
+
+# -----------------------------------
+# 7️⃣ EXECUTIVE INSIGHTS
+# -----------------------------------
+
+print("\n--- AI INSIGHTS ---")
+
+if len(anomalies) > 0:
+    print("⚠ Risk Alert: Abnormal activity detected.")
+else:
+    print("✔ No major anomalies found.")
+
+print("📈 Forecast for next", future_steps, "steps:")
+print(future_pred)
