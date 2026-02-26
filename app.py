@@ -115,20 +115,25 @@ with tab1:
 
     st.plotly_chart(fig_area, use_container_width=True)
 
-    # =====================================================
-    # COLUMN CHART (NEW)
-    # =====================================================
+    
+# HISTOGRAM (Replaces Column Chart)
+# =====================================================
 
-    st.subheader("📊 Column Performance Chart")
+st.subheader("📊 Distribution Analysis (Histogram)")
 
-    fig_bar = px.bar(
-        df_filtered,
-        x=df_filtered.index,
-        y=metric,
-        template="plotly_dark"
-    )
+fig_hist = px.histogram(
+    df_filtered,
+    x=metric,
+    nbins=30,
+    template="plotly_dark"
+)
 
-    st.plotly_chart(fig_bar, use_container_width=True)
+fig_hist.update_layout(
+    xaxis_title=metric,
+    yaxis_title="Frequency"
+)
+
+st.plotly_chart(fig_hist, use_container_width=True)
 
     # =====================================================
     # TREEMAP
