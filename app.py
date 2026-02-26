@@ -6,31 +6,32 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="GenAI BI Dashboard", layout="wide")
 
-# ----------------------------
-# DARK THEME CSS
-# ----------------------------
-st.markdown("""
-<style>
-body {
-    background-color: #0E1117;
-}
-.metric-card {
-    background-color: #1c1f26;
-    padding: 20px;
-    border-radius: 10px;
-    color: white;
-    text-align: center;
-}
-</style>
-""", unsafe_allow_html=True)
-
 st.title("📊 GenAI-Powered Business Intelligence Dashboard")
 
-uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
+# ----------------------------
+# MULTIPLE FILE UPLOAD
+# ----------------------------
+uploaded_files = st.file_uploader(
+    "Upload one or more CSV files",
+    type=["csv"],
+    accept_multiple_files=True
+)
 
-if uploaded_file is not None:
+if uploaded_files:
 
-    df = pd.read_csv(uploaded_file)
+    df_list = []
+
+    for file in uploaded_files:
+        temp_df = pd.read_csv(file)
+        temp_df["Source_File"] = file.name   # Track file origin
+        df_list.append(temp_df)
+
+    df = pd.concat(df_list, ignore_index=True)
+
+    st.success(f"{len(uploaded_files)} files merged successfully!")
+
+    st.subheader("📌 Combined Dataset Preview")
+    st.dataframe(df.head())
 
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
     categorical_cols = df.select_dtypes(include='object').columns.tolist()
@@ -39,67 +40,83 @@ if uploaded_file is not None:
         st.error("No numeric columns found.")
     else:
 
-        selected_col = st.selectbox("Select Metric", numeric_cols)
+        selected_col = st.selectbox("Select Metric for Analysis", numeric_cols)
 
+        # ----------------------------
+        # KPI SECTION
+        # ----------------------------
         total = df[selected_col].sum()
         avg = df[selected_col].mean()
         max_val = df[selected_col].max()
         min_val = df[selected_col].min()
 
-        # ----------------------------
-        # KPI CARDS (Top Row)
-        # ----------------------------
         col1, col2, col3, col4 = st.columns(4)
 
-        col1.markdown(f"<div class='metric-card'><h3>Total</h3><h2>{round(total,2)}</h2></div>", unsafe_allow_html=True)
-        col2.markdown(f"<div class='metric-card'><h3>Average</h3><h2>{round(avg,2)}</h2></div>", unsafe_allow_html=True)
-        col3.markdown(f"<div class='metric-card'><h3>Maximum</h3><h2>{round(max_val,2)}</h2></div>", unsafe_allow_html=True)
-        col4.markdown(f"<div class='metric-card'><h3>Minimum</h3><h2>{round(min_val,2)}</h2></div>", unsafe_allow_html=True)
+        col1.metric("Total", round(total, 2))
+        col2.metric("Average", round(avg, 2))
+        col3.metric("Maximum", round(max_val, 2))
+        col4.metric("Minimum", round(min_val, 2))
 
         st.markdown("---")
 
         # ----------------------------
-        # ROW 1 - LINE & BAR
+        # TREND CHART
         # ----------------------------
-        row1_col1, row1_col2 = st.columns(2)
+        colA, colB = st.columns(2)
 
-        with row1_col1:
-            fig_line = px.line(df, y=selected_col, title="Trend Analysis")
+        with colA:
+            fig_line = px.line(df, y=selected_col, color="Source_File",
+                               title="Trend by File Source")
             fig_line.update_layout(template="plotly_dark")
             st.plotly_chart(fig_line, use_container_width=True)
 
-        with row1_col2:
-            fig_bar = px.bar(df, y=selected_col, title="Bar Analysis")
-            fig_bar.update_layout(template="plotly_dark")
-            st.plotly_chart(fig_bar, use_container_width=True)
-
-        # ----------------------------
-        # ROW 2 - PIE & HISTOGRAM
-        # ----------------------------
-        row2_col1, row2_col2 = st.columns(2)
-
-        if len(categorical_cols) > 0:
-            with row2_col1:
-                pie_data = df[categorical_cols[0]].value_counts().reset_index()
-                pie_data.columns = [categorical_cols[0], "Count"]
-
-                fig_pie = px.pie(pie_data,
-                                 names=categorical_cols[0],
-                                 values="Count",
-                                 title="Category Distribution")
-                fig_pie.update_layout(template="plotly_dark")
-                st.plotly_chart(fig_pie, use_container_width=True)
-
-        with row2_col2:
-            fig_hist = px.histogram(df, x=selected_col, nbins=20, title="Distribution")
+        with colB:
+            fig_hist = px.histogram(df, x=selected_col,
+                                    title="Distribution Across Files",
+                                    color="Source_File")
             fig_hist.update_layout(template="plotly_dark")
             st.plotly_chart(fig_hist, use_container_width=True)
+
+        # ----------------------------
+        # PIE CHART (File Contribution)
+        # ----------------------------
+        st.subheader("🥧 File Contribution Analysis")
+
+        file_summary = df.groupby("Source_File")[selected_col].sum().reset_index()
+
+        fig_pie = px.pie(file_summary,
+                         names="Source_File",
+                         values=selected_col,
+                         title="Contribution by Uploaded File")
+        fig_pie.update_layout(template="plotly_dark")
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+        # ----------------------------
+        # CATEGORY ANALYSIS (if available)
+        # ----------------------------
+        if len(categorical_cols) > 1:
+            st.subheader("📊 Category Comparison")
+
+            category_col = st.selectbox(
+                "Select Category Column",
+                [col for col in categorical_cols if col != "Source_File"]
+            )
+
+            grouped = df.groupby(category_col)[selected_col].mean().reset_index()
+
+            fig_bar = px.bar(grouped,
+                             x=category_col,
+                             y=selected_col,
+                             title="Category vs Metric")
+            fig_bar.update_layout(template="plotly_dark")
+            st.plotly_chart(fig_bar, use_container_width=True)
 
         # ----------------------------
         # CORRELATION HEATMAP
         # ----------------------------
         if len(numeric_cols) > 1:
-            st.markdown("### 🔥 Correlation Heatmap")
+            st.subheader("🔥 Correlation Heatmap")
+
             corr = df[numeric_cols].corr()
 
             fig_heat = go.Figure(data=go.Heatmap(
@@ -109,3 +126,6 @@ if uploaded_file is not None:
             ))
             fig_heat.update_layout(template="plotly_dark")
             st.plotly_chart(fig_heat, use_container_width=True)
+
+else:
+    st.info("Upload one or more CSV files to begin analysis.")
