@@ -4,7 +4,6 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.ensemble import IsolationForest
-from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error
 
@@ -56,7 +55,6 @@ if not numeric_cols:
 metric = st.sidebar.selectbox("Select KPI Metric", numeric_cols)
 
 df[metric] = pd.to_numeric(df[metric], errors="coerce")
-df = df.replace([np.inf, -np.inf], np.nan)
 df = df.dropna(subset=[metric]).reset_index(drop=True)
 
 # =====================================================
@@ -103,97 +101,53 @@ with tab1:
     col4.metric("Min", f"{min_val:,.2f}")
 
     # =====================================================
-    # 1️⃣ TREEMAP
+    # AREA CHART (NEW)
+    # =====================================================
+
+    st.subheader("📈 Area Trend View")
+
+    fig_area = px.area(
+        df_filtered,
+        x=df_filtered.index,
+        y=metric,
+        template="plotly_dark"
+    )
+
+    st.plotly_chart(fig_area, use_container_width=True)
+
+    # =====================================================
+    # COLUMN CHART (NEW)
+    # =====================================================
+
+    st.subheader("📊 Column Performance Chart")
+
+    fig_bar = px.bar(
+        df_filtered,
+        x=df_filtered.index,
+        y=metric,
+        template="plotly_dark"
+    )
+
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+    # =====================================================
+    # TREEMAP
     # =====================================================
 
     if categorical_cols:
-        st.subheader("🌳 Hierarchical Contribution (Treemap)")
+        st.subheader("🌳 Hierarchical Contribution")
+
         cat = categorical_cols[0]
-
         tree_data = df_filtered.groupby(cat)[metric].sum().reset_index()
-        fig_tree = px.treemap(tree_data,
-                              path=[cat],
-                              values=metric,
-                              template="plotly_dark")
-        st.plotly_chart(fig_tree, use_container_width=True)
 
-    # =====================================================
-    # 2️⃣ HORIZONTAL BAR RANKING (NEW)
-    # =====================================================
-
-    if categorical_cols:
-        st.subheader("🏆 Category Ranking")
-
-        ranking = df_filtered.groupby(cat)[metric].sum().reset_index()
-        ranking = ranking.sort_values(metric, ascending=False).head(10)
-
-        fig_bar = px.bar(ranking,
-                         x=metric,
-                         y=cat,
-                         orientation='h',
-                         template="plotly_dark")
-
-        st.plotly_chart(fig_bar, use_container_width=True)
-
-    # =====================================================
-    # 3️⃣ PARETO CUMULATIVE CURVE (NEW)
-    # =====================================================
-
-    if categorical_cols:
-        st.subheader("📊 Cumulative Contribution Curve")
-
-        pareto = df_filtered.groupby(cat)[metric].sum().reset_index()
-        pareto = pareto.sort_values(metric, ascending=False)
-        pareto["Cumulative %"] = pareto[metric].cumsum() / pareto[metric].sum() * 100
-
-        fig_pareto = go.Figure()
-        fig_pareto.add_trace(go.Bar(
-            x=pareto[cat],
-            y=pareto[metric],
-            name="Contribution"
-        ))
-        fig_pareto.add_trace(go.Scatter(
-            x=pareto[cat],
-            y=pareto["Cumulative %"],
-            yaxis="y2",
-            name="Cumulative %"
-        ))
-
-        fig_pareto.update_layout(
-            template="plotly_dark",
-            yaxis2=dict(overlaying='y', side='right')
+        fig_tree = px.treemap(
+            tree_data,
+            path=[cat],
+            values=metric,
+            template="plotly_dark"
         )
 
-        st.plotly_chart(fig_pareto, use_container_width=True)
-
-    # =====================================================
-    # 4️⃣ 3D SCATTER
-    # =====================================================
-
-    if len(numeric_cols) >= 3:
-        st.subheader("🧊 3D Multi-Dimensional View")
-        fig_3d = px.scatter_3d(df_filtered,
-                               x=numeric_cols[0],
-                               y=numeric_cols[1],
-                               z=numeric_cols[2],
-                               color=metric,
-                               template="plotly_dark")
-        st.plotly_chart(fig_3d, use_container_width=True)
-
-    # =====================================================
-    # 5️⃣ BUBBLE CHART
-    # =====================================================
-
-    st.subheader("🔵 Impact Bubble Chart")
-
-    fig_bubble = px.scatter(df_filtered,
-                            x=df_filtered.index,
-                            y=metric,
-                            size=metric,
-                            color=metric,
-                            template="plotly_dark")
-
-    st.plotly_chart(fig_bubble, use_container_width=True)
+        st.plotly_chart(fig_tree, use_container_width=True)
 
 # =====================================================
 # TAB 2 – RISK INTELLIGENCE
@@ -202,13 +156,17 @@ with tab1:
 with tab2:
 
     if len(df_filtered) > 10:
+
         iso = IsolationForest(contamination=0.05, random_state=42)
         df_filtered["Anomaly"] = iso.fit_predict(df_filtered[[metric]])
 
-        fig = px.scatter(df_filtered,
-                         y=metric,
-                         color=df_filtered["Anomaly"].astype(str),
-                         template="plotly_dark")
+        fig = px.scatter(
+            df_filtered,
+            x=df_filtered.index,
+            y=metric,
+            color=df_filtered["Anomaly"].astype(str),
+            template="plotly_dark"
+        )
 
         st.plotly_chart(fig, use_container_width=True)
 
@@ -247,24 +205,22 @@ with tab3:
 
 with tab4:
 
-    st.subheader("📋 Detailed Executive Summary")
+    st.subheader("📋 Executive Summary")
 
     report_points = [
         f"• Total records analyzed: {len(df_filtered)}",
         f"• KPI selected: {metric}",
         f"• Aggregate value: {round(total,2)}",
         f"• Average performance: {round(avg,2)}",
-        f"• Maximum recorded: {round(max_val,2)}",
-        f"• Minimum recorded: {round(min_val,2)}",
-        "• Treemap highlights hierarchical contribution patterns",
-        "• Horizontal ranking identifies top performing categories",
-        "• Pareto curve reveals cumulative impact distribution",
-        "• 3D visualization captures multi-dimensional relationships",
-        "• Bubble chart represents magnitude and impact simultaneously",
-        "• Anomaly detection performed using Isolation Forest",
-        "• Forecasting executed using Linear Regression",
-        "• Future projection calculated for strategic planning",
-        "• Recommendation: Focus on top 20% contributors for optimization"
+        f"• Maximum value observed: {round(max_val,2)}",
+        f"• Minimum value observed: {round(min_val,2)}",
+        "• Area chart highlights overall trend behaviour",
+        "• Column chart compares performance across timeline",
+        "• Treemap shows categorical contribution distribution",
+        "• Anomaly detection executed using Isolation Forest",
+        "• Predictive modeling performed using Linear Regression",
+        "• Forecast generated for next 10 periods",
+        "• Strategic recommendation: Monitor growth and variability closely"
     ]
 
     for point in report_points:
