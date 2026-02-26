@@ -130,15 +130,22 @@ with tab1:
         st.plotly_chart(fig_sun, use_container_width=True)
 
     # =====================================================
-    # 3️⃣ VIOLIN PLOT
+    # 3️⃣ HEATMAP (NEW)
     # =====================================================
 
-    st.subheader("🎻 Distribution Density (Violin)")
-    fig_violin = px.violin(df_filtered,
-                           y=metric,
-                           box=True,
-                           template="plotly_dark")
-    st.plotly_chart(fig_violin, use_container_width=True)
+    st.subheader("🔥 Intensity Heatmap")
+
+    heat_data = np.array(df_filtered[metric]).reshape(1, -1)
+
+    fig_heat = go.Figure(data=go.Heatmap(
+        z=heat_data,
+        colorscale="Viridis"
+    ))
+
+    fig_heat.update_layout(template="plotly_dark",
+                           yaxis_showticklabels=False)
+
+    st.plotly_chart(fig_heat, use_container_width=True)
 
     # =====================================================
     # 4️⃣ 3D SCATTER
@@ -155,21 +162,19 @@ with tab1:
         st.plotly_chart(fig_3d, use_container_width=True)
 
     # =====================================================
-    # 5️⃣ POLAR BAR CHART
+    # 5️⃣ BUBBLE CHART (NEW)
     # =====================================================
 
-    st.subheader("🧭 Cyclical Intensity (Polar Bar)")
+    st.subheader("🔵 Impact Bubble Chart")
 
-    sample_vals = df_filtered[metric].head(10).values
-    angles = np.linspace(0, 360, len(sample_vals))
+    fig_bubble = px.scatter(df_filtered,
+                            x=df_filtered.index,
+                            y=metric,
+                            size=metric,
+                            color=metric,
+                            template="plotly_dark")
 
-    fig_polar = go.Figure(go.Barpolar(
-        r=sample_vals,
-        theta=angles
-    ))
-
-    fig_polar.update_layout(template="plotly_dark")
-    st.plotly_chart(fig_polar, use_container_width=True)
+    st.plotly_chart(fig_bubble, use_container_width=True)
 
 # =====================================================
 # TAB 2 – RISK INTELLIGENCE
@@ -234,13 +239,13 @@ with tab4:
         f"• Minimum recorded: {round(min_val,2)}",
         "• Treemap highlights hierarchical contribution patterns",
         "• Sunburst reveals multi-level categorical impact",
-        "• Violin plot shows full distribution density",
-        "• 3D visualization captures multi-dimensional trends",
-        "• Polar chart reveals cyclical intensity behavior",
+        "• Heatmap visualizes intensity variations across timeline",
+        "• 3D visualization captures multi-dimensional relationships",
+        "• Bubble chart represents magnitude and impact simultaneously",
         "• Anomaly detection performed using Isolation Forest",
         "• Forecasting executed using Linear Regression",
         "• Future projection calculated for strategic planning",
-        "• Recommendation: Align growth with volatility monitoring"
+        "• Recommendation: Monitor growth trends and volatility zones"
     ]
 
     for point in report_points:
