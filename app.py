@@ -95,7 +95,6 @@ with tab1:
     avg = df_filtered[metric].mean()
     max_val = df_filtered[metric].max()
     min_val = df_filtered[metric].min()
-    std_val = df_filtered[metric].std()
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total", f"{total:,.2f}")
@@ -103,22 +102,74 @@ with tab1:
     col3.metric("Max", f"{max_val:,.2f}")
     col4.metric("Min", f"{min_val:,.2f}")
 
-    growth = ((max_val - min_val) / abs(min_val))*100 if min_val != 0 else 0
-    st.metric("Growth %", f"{round(growth,2)}%")
+    # =====================================================
+    # 1️⃣ TREEMAP
+    # =====================================================
 
-    # Gauge
-    fig_gauge = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=avg,
-        title={'text': f"Average {metric}"},
-        gauge={'axis': {'range': [min_val, max_val]}}
+    if categorical_cols:
+        st.subheader("🌳 Hierarchical Contribution (Treemap)")
+        cat = categorical_cols[0]
+
+        tree_data = df_filtered.groupby(cat)[metric].sum().reset_index()
+        fig_tree = px.treemap(tree_data,
+                              path=[cat],
+                              values=metric,
+                              template="plotly_dark")
+        st.plotly_chart(fig_tree, use_container_width=True)
+
+    # =====================================================
+    # 2️⃣ SUNBURST
+    # =====================================================
+
+    if len(categorical_cols) >= 2:
+        st.subheader("🌞 Multi-Level Impact (Sunburst)")
+        fig_sun = px.sunburst(df_filtered,
+                              path=categorical_cols[:2],
+                              values=metric,
+                              template="plotly_dark")
+        st.plotly_chart(fig_sun, use_container_width=True)
+
+    # =====================================================
+    # 3️⃣ VIOLIN PLOT
+    # =====================================================
+
+    st.subheader("🎻 Distribution Density (Violin)")
+    fig_violin = px.violin(df_filtered,
+                           y=metric,
+                           box=True,
+                           template="plotly_dark")
+    st.plotly_chart(fig_violin, use_container_width=True)
+
+    # =====================================================
+    # 4️⃣ 3D SCATTER
+    # =====================================================
+
+    if len(numeric_cols) >= 3:
+        st.subheader("🧊 3D Multi-Dimensional View")
+        fig_3d = px.scatter_3d(df_filtered,
+                               x=numeric_cols[0],
+                               y=numeric_cols[1],
+                               z=numeric_cols[2],
+                               color=metric,
+                               template="plotly_dark")
+        st.plotly_chart(fig_3d, use_container_width=True)
+
+    # =====================================================
+    # 5️⃣ POLAR BAR CHART
+    # =====================================================
+
+    st.subheader("🧭 Cyclical Intensity (Polar Bar)")
+
+    sample_vals = df_filtered[metric].head(10).values
+    angles = np.linspace(0, 360, len(sample_vals))
+
+    fig_polar = go.Figure(go.Barpolar(
+        r=sample_vals,
+        theta=angles
     ))
-    fig_gauge.update_layout(template="plotly_dark")
-    st.plotly_chart(fig_gauge, use_container_width=True)
 
-    # Area Chart
-    fig_area = px.area(df_filtered, y=metric, template="plotly_dark")
-    st.plotly_chart(fig_area, use_container_width=True)
+    fig_polar.update_layout(template="plotly_dark")
+    st.plotly_chart(fig_polar, use_container_width=True)
 
 # =====================================================
 # TAB 2 – RISK INTELLIGENCE
@@ -130,12 +181,11 @@ with tab2:
         iso = IsolationForest(contamination=0.05, random_state=42)
         df_filtered["Anomaly"] = iso.fit_predict(df_filtered[[metric]])
 
-        fig = px.scatter(
-            df_filtered,
-            y=metric,
-            color=df_filtered["Anomaly"].astype(str),
-            template="plotly_dark"
-        )
+        fig = px.scatter(df_filtered,
+                         y=metric,
+                         color=df_filtered["Anomaly"].astype(str),
+                         template="plotly_dark")
+
         st.plotly_chart(fig, use_container_width=True)
 
 # =====================================================
@@ -177,21 +227,20 @@ with tab4:
 
     report_points = [
         f"• Total records analyzed: {len(df_filtered)}",
-        f"• KPI selected for analysis: {metric}",
-        f"• Aggregate value observed: {round(total,2)}",
-        f"• Average performance level: {round(avg,2)}",
-        f"• Maximum value recorded: {round(max_val,2)}",
-        f"• Minimum value recorded: {round(min_val,2)}",
-        f"• Observed growth percentage: {round(growth,2)}%",
-        f"• Standard deviation (volatility indicator): {round(std_val,2)}",
-        "• Anomaly detection executed using Isolation Forest model",
-        "• Risk clusters visually highlighted for strategic monitoring",
-        "• Predictive modeling performed using Linear Regression",
-        "• Future forecast trend projected for next 10 periods",
-        "• Model evaluation metrics calculated (R² & MSE)",
-        "• Business segmentation supported using clustering",
-        "• Correlation relationships evaluated among numeric features",
-        "• Recommendation: Monitor volatility and align forecasting with business planning",
+        f"• KPI selected: {metric}",
+        f"• Aggregate value: {round(total,2)}",
+        f"• Average performance: {round(avg,2)}",
+        f"• Maximum recorded: {round(max_val,2)}",
+        f"• Minimum recorded: {round(min_val,2)}",
+        "• Treemap highlights hierarchical contribution patterns",
+        "• Sunburst reveals multi-level categorical impact",
+        "• Violin plot shows full distribution density",
+        "• 3D visualization captures multi-dimensional trends",
+        "• Polar chart reveals cyclical intensity behavior",
+        "• Anomaly detection performed using Isolation Forest",
+        "• Forecasting executed using Linear Regression",
+        "• Future projection calculated for strategic planning",
+        "• Recommendation: Align growth with volatility monitoring"
     ]
 
     for point in report_points:
