@@ -12,9 +12,21 @@ st.set_page_config(page_title="AI Predictive BI Dashboard", layout="wide")
 
 st.title("🚀 AI-Powered Predictive Business Intelligence Dashboard")
 
-# -----------------------------
+# ---------------------------------------
+# SAFE FILE READER (Fix Encoding Error)
+# ---------------------------------------
+def read_file(file):
+    try:
+        return pd.read_csv(file, encoding="utf-8")
+    except:
+        try:
+            return pd.read_csv(file, encoding="latin1")
+        except:
+            return pd.read_csv(file, encoding="ISO-8859-1", encoding_errors="ignore")
+
+# ---------------------------------------
 # FILE UPLOAD
-# -----------------------------
+# ---------------------------------------
 uploaded_files = st.file_uploader(
     "Upload Multiple CSV Files",
     type=["csv"],
@@ -24,8 +36,9 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
 
     df_list = []
+
     for file in uploaded_files:
-        temp_df = pd.read_csv(file)
+        temp_df = read_file(file)
         temp_df["Source_File"] = file.name
         df_list.append(temp_df)
 
@@ -34,14 +47,14 @@ if uploaded_files:
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 
     if not numeric_cols:
-        st.error("No numeric column found.")
+        st.error("No numeric columns found in dataset.")
         st.stop()
 
     metric = st.sidebar.selectbox("Select KPI Metric", numeric_cols)
 
-    # -----------------------------
+    # ---------------------------------------
     # KPI SECTION
-    # -----------------------------
+    # ---------------------------------------
     total = df[metric].sum()
     avg = df[metric].mean()
     max_val = df[metric].max()
@@ -55,34 +68,38 @@ if uploaded_files:
 
     st.markdown("---")
 
-    # -----------------------------
-    # VISUALIZATIONS
-    # -----------------------------
-
+    # ---------------------------------------
+    # TREND CHART
+    # ---------------------------------------
     st.subheader("📈 Trend Analysis")
     fig_line = px.line(df, y=metric, color="Source_File", template="plotly_dark")
     st.plotly_chart(fig_line, use_container_width=True)
 
+    # ---------------------------------------
+    # SCATTER PLOT
+    # ---------------------------------------
     st.subheader("🔵 Scatter Plot")
     fig_scatter = px.scatter(df, x=df.index, y=metric,
                              color="Source_File",
                              template="plotly_dark")
     st.plotly_chart(fig_scatter, use_container_width=True)
 
+    # ---------------------------------------
+    # HISTOGRAM
+    # ---------------------------------------
     st.subheader("📊 Distribution")
     fig_hist = px.histogram(df, x=metric, nbins=30,
                             color="Source_File",
                             template="plotly_dark")
     st.plotly_chart(fig_hist, use_container_width=True)
 
-    # -----------------------------
+    # ---------------------------------------
     # ANOMALY DETECTION
-    # -----------------------------
+    # ---------------------------------------
     st.subheader("🚨 Anomaly Detection (Isolation Forest)")
 
     iso = IsolationForest(contamination=0.05, random_state=42)
     df["Anomaly"] = iso.fit_predict(df[[metric]])
-
     anomalies = df[df["Anomaly"] == -1]
 
     fig_anomaly = go.Figure()
@@ -104,14 +121,13 @@ if uploaded_files:
     ))
 
     fig_anomaly.update_layout(template="plotly_dark")
-
     st.plotly_chart(fig_anomaly, use_container_width=True)
 
     st.info(f"Total Anomalies Detected: {len(anomalies)}")
 
-    # -----------------------------
+    # ---------------------------------------
     # LSTM FORECASTING
-    # -----------------------------
+    # ---------------------------------------
     st.subheader("🔮 LSTM Deep Learning Forecast")
 
     data = df[metric].values.reshape(-1,1)
@@ -172,15 +188,14 @@ if uploaded_files:
         ))
 
         fig_forecast.update_layout(template="plotly_dark")
-
         st.plotly_chart(fig_forecast, use_container_width=True)
 
     else:
         st.warning("Not enough data points for LSTM forecasting.")
 
-    # -----------------------------
+    # ---------------------------------------
     # CORRELATION HEATMAP
-    # -----------------------------
+    # ---------------------------------------
     if len(numeric_cols) > 1:
         st.subheader("🔥 Correlation Heatmap")
 
@@ -193,12 +208,11 @@ if uploaded_files:
         ))
 
         fig_heat.update_layout(template="plotly_dark")
-
         st.plotly_chart(fig_heat, use_container_width=True)
 
-    # -----------------------------
+    # ---------------------------------------
     # AI GENERATED REPORT
-    # -----------------------------
+    # ---------------------------------------
     st.markdown("## 🧠 AI Generated Executive Report")
 
     trend_direction = "increasing" if 'future_predictions' in locals() and future_predictions[-1] > avg else "declining"
@@ -206,21 +220,20 @@ if uploaded_files:
     report = f"""
 ### Executive Summary
 
-The system analyzed **{len(df)} records** across **{len(uploaded_files)} datasets**.
+The system analyzed {len(df)} records across {len(uploaded_files)} datasets.
 
-- Total {metric}: **{round(total,2)}**
-- Average {metric}: **{round(avg,2)}**
-- Maximum value: **{round(max_val,2)}**
-- Minimum value: **{round(min_val,2)}**
+Total {metric}: {round(total,2)}
+Average {metric}: {round(avg,2)}
+Maximum: {round(max_val,2)}
+Minimum: {round(min_val,2)}
 
-### Risk Monitoring
-Isolation Forest detected **{len(anomalies)} anomalies**, indicating unusual fluctuations requiring monitoring.
+Isolation Forest detected {len(anomalies)} anomalies.
 
-### Forecast Insight
-The LSTM deep learning model predicts a **{trend_direction} trend** over the next 10 periods.
+The LSTM deep learning model predicts a {trend_direction} trend
+for the next 10 time periods.
 
-### Strategic Recommendation
-Align operational planning with forecast direction and monitor anomaly spikes to reduce risk exposure.
+Strategic planning should align with projected movement
+while monitoring anomaly spikes.
 """
 
     st.success(report)
