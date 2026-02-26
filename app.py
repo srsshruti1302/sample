@@ -118,34 +118,53 @@ with tab1:
         st.plotly_chart(fig_tree, use_container_width=True)
 
     # =====================================================
-    # 2️⃣ SUNBURST
+    # 2️⃣ HORIZONTAL BAR RANKING (NEW)
     # =====================================================
 
-    if len(categorical_cols) >= 2:
-        st.subheader("🌞 Multi-Level Impact (Sunburst)")
-        fig_sun = px.sunburst(df_filtered,
-                              path=categorical_cols[:2],
-                              values=metric,
-                              template="plotly_dark")
-        st.plotly_chart(fig_sun, use_container_width=True)
+    if categorical_cols:
+        st.subheader("🏆 Category Ranking")
+
+        ranking = df_filtered.groupby(cat)[metric].sum().reset_index()
+        ranking = ranking.sort_values(metric, ascending=False).head(10)
+
+        fig_bar = px.bar(ranking,
+                         x=metric,
+                         y=cat,
+                         orientation='h',
+                         template="plotly_dark")
+
+        st.plotly_chart(fig_bar, use_container_width=True)
 
     # =====================================================
-    # 3️⃣ HEATMAP (NEW)
+    # 3️⃣ PARETO CUMULATIVE CURVE (NEW)
     # =====================================================
 
-    st.subheader("🔥 Intensity Heatmap")
+    if categorical_cols:
+        st.subheader("📊 Cumulative Contribution Curve")
 
-    heat_data = np.array(df_filtered[metric]).reshape(1, -1)
+        pareto = df_filtered.groupby(cat)[metric].sum().reset_index()
+        pareto = pareto.sort_values(metric, ascending=False)
+        pareto["Cumulative %"] = pareto[metric].cumsum() / pareto[metric].sum() * 100
 
-    fig_heat = go.Figure(data=go.Heatmap(
-        z=heat_data,
-        colorscale="Viridis"
-    ))
+        fig_pareto = go.Figure()
+        fig_pareto.add_trace(go.Bar(
+            x=pareto[cat],
+            y=pareto[metric],
+            name="Contribution"
+        ))
+        fig_pareto.add_trace(go.Scatter(
+            x=pareto[cat],
+            y=pareto["Cumulative %"],
+            yaxis="y2",
+            name="Cumulative %"
+        ))
 
-    fig_heat.update_layout(template="plotly_dark",
-                           yaxis_showticklabels=False)
+        fig_pareto.update_layout(
+            template="plotly_dark",
+            yaxis2=dict(overlaying='y', side='right')
+        )
 
-    st.plotly_chart(fig_heat, use_container_width=True)
+        st.plotly_chart(fig_pareto, use_container_width=True)
 
     # =====================================================
     # 4️⃣ 3D SCATTER
@@ -162,7 +181,7 @@ with tab1:
         st.plotly_chart(fig_3d, use_container_width=True)
 
     # =====================================================
-    # 5️⃣ BUBBLE CHART (NEW)
+    # 5️⃣ BUBBLE CHART
     # =====================================================
 
     st.subheader("🔵 Impact Bubble Chart")
@@ -238,14 +257,14 @@ with tab4:
         f"• Maximum recorded: {round(max_val,2)}",
         f"• Minimum recorded: {round(min_val,2)}",
         "• Treemap highlights hierarchical contribution patterns",
-        "• Sunburst reveals multi-level categorical impact",
-        "• Heatmap visualizes intensity variations across timeline",
+        "• Horizontal ranking identifies top performing categories",
+        "• Pareto curve reveals cumulative impact distribution",
         "• 3D visualization captures multi-dimensional relationships",
         "• Bubble chart represents magnitude and impact simultaneously",
         "• Anomaly detection performed using Isolation Forest",
         "• Forecasting executed using Linear Regression",
         "• Future projection calculated for strategic planning",
-        "• Recommendation: Monitor growth trends and volatility zones"
+        "• Recommendation: Focus on top 20% contributors for optimization"
     ]
 
     for point in report_points:
