@@ -39,12 +39,17 @@ if uploaded_file is not None:
 
         col1, col2, col3 = st.columns(3)
 
-        col1.metric("Total", round(df[selected_col].sum(), 2))
-        col2.metric("Average", round(df[selected_col].mean(), 2))
-        col3.metric("Maximum", round(df[selected_col].max(), 2))
+        total_val = df[selected_col].sum()
+        avg_val = df[selected_col].mean()
+        max_val = df[selected_col].max()
+        min_val = df[selected_col].min()
+
+        col1.metric("Total", round(total_val, 2))
+        col2.metric("Average", round(avg_val, 2))
+        col3.metric("Maximum", round(max_val, 2))
 
         # -----------------------------
-        # SMART VISUALIZATIONS
+        # VISUALIZATIONS
         # -----------------------------
         st.subheader("📊 Smart Visualizations")
 
@@ -94,14 +99,15 @@ if uploaded_file is not None:
         # -----------------------------
         st.subheader("🚨 Anomaly Detection")
 
-        model_iso = IsolationForest(contamination=0.05)
+        model_iso = IsolationForest(contamination=0.05, random_state=42)
         df["Anomaly"] = model_iso.fit_predict(df[[selected_col]])
+
+        anomaly_count = len(df[df["Anomaly"] == -1])
 
         fig6, ax6 = plt.subplots()
         ax6.scatter(range(len(df)), df[selected_col], c=df["Anomaly"])
+        ax6.set_title("Anomaly Detection")
         st.pyplot(fig6)
-
-        anomaly_count = len(df[df["Anomaly"] == -1])
 
         # -----------------------------
         # LSTM FORECASTING
@@ -110,17 +116,18 @@ if uploaded_file is not None:
 
         data = df[selected_col].values.reshape(-1, 1)
 
-        scaler = MinMaxScaler()
-        data_scaled = scaler.fit_transform(data)
+        if len(data) > 15:
 
-        X = []
-        y = []
+            scaler = MinMaxScaler()
+            data_scaled = scaler.fit_transform(data)
 
-        for i in range(10, len(data_scaled)):
-            X.append(data_scaled[i-10:i])
-            y.append(data_scaled[i])
+            X = []
+            y = []
 
-        if len(X) > 0:
+            for i in range(10, len(data_scaled)):
+                X.append(data_scaled[i-10:i])
+                y.append(data_scaled[i])
+
             X, y = np.array(X), np.array(y)
 
             model_lstm = Sequential()
@@ -138,39 +145,59 @@ if uploaded_file is not None:
             ax7.plot(range(10, len(predictions)+10), predictions, label="Predicted")
             ax7.legend()
             st.pyplot(fig7)
+
         else:
             st.warning("Not enough data for forecasting (need at least 15 rows).")
 
         # -----------------------------
-        # AI GENERATED INSIGHT
+        # AI GENERATED INSIGHT SUMMARY
         # -----------------------------
         st.subheader("🤖 AI Generated Insights")
 
         insight = f"""
-        The total value of {selected_col} is {round(df[selected_col].sum(),2)}.
-        The average value is {round(df[selected_col].mean(),2)}.
-        The maximum value recorded is {round(df[selected_col].max(),2)}.
-        Approximately {anomaly_count} anomalies were detected.
-        Forecasting indicates a continuation of historical trend patterns.
+        The dataset shows a total of {round(total_val,2)}.
+        The average value is {round(avg_val,2)}.
+        The minimum recorded value is {round(min_val,2)}.
+        The maximum recorded value is {round(max_val,2)}.
+        {anomaly_count} anomalies were detected in the dataset.
+        The forecasting model indicates continuation of recent patterns.
         """
 
         st.success(insight)
 
         # -----------------------------
-        # NATURAL LANGUAGE QUERY
+        # SMART QUESTION ANSWERING
         # -----------------------------
         st.subheader("💬 Ask Questions About Data")
 
         question = st.text_input("Type your business question:")
 
         if question:
-            response = f"""
-            Based on analysis of {selected_col}, your query '{question}' 
-            relates to dataset trends and performance metrics.
-            The dashboard suggests pattern consistency with some anomalies.
-            """
 
-            st.info(response)
+            q = question.lower()
+
+            if "minimum" in q or "lowest" in q:
+                answer = f"The minimum value of {selected_col} is {round(min_val,2)}."
+
+            elif "maximum" in q or "highest" in q:
+                answer = f"The maximum value of {selected_col} is {round(max_val,2)}."
+
+            elif "average" in q or "mean" in q:
+                answer = f"The average value of {selected_col} is {round(avg_val,2)}."
+
+            elif "total" in q or "sum" in q:
+                answer = f"The total value of {selected_col} is {round(total_val,2)}."
+
+            elif "anomaly" in q:
+                answer = f"There are {anomaly_count} anomalies detected."
+
+            elif "trend" in q:
+                answer = "The trend can be observed in the line chart above showing historical progression."
+
+            else:
+                answer = "Please ask about total, average, minimum, maximum, trend, or anomalies."
+
+            st.success(answer)
 
 else:
     st.info("Please upload a CSV file to begin analysis.")
