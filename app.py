@@ -3,250 +3,172 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import MinMaxScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
 
-st.set_page_config(page_title="AI Predictive BI Dashboard", layout="wide")
+st.set_page_config(page_title="Executive BI Dashboard", layout="wide")
 
-st.title("🚀 AI-Powered Predictive Business Intelligence Dashboard")
+# -----------------------------
+# HEADER
+# -----------------------------
+st.markdown("""
+    <style>
+    .big-title {font-size:28px; font-weight:600;}
+    .kpi-card {background-color:#111827; padding:20px; border-radius:10px;}
+    </style>
+""", unsafe_allow_html=True)
 
-# -----------------------------------------
+st.markdown('<div class="big-title">📊 Executive Business Intelligence Dashboard</div>', unsafe_allow_html=True)
+
+# -----------------------------
 # FILE UPLOAD
-# -----------------------------------------
+# -----------------------------
 uploaded_files = st.file_uploader(
-    "Upload Multiple CSV Files",
+    "Upload Business Data (Multiple CSV files allowed)",
     type=["csv"],
     accept_multiple_files=True
 )
 
-if not uploaded_files:
-    st.info("Please upload one or more CSV files.")
-    st.stop()
+if uploaded_files:
 
-df_list = []
+    df_list = []
+    for file in uploaded_files:
+        temp_df = pd.read_csv(file)
+        temp_df["Source_File"] = file.name
+        df_list.append(temp_df)
 
-for file in uploaded_files:
-    try:
-        temp_df = pd.read_csv(file, encoding="utf-8")
-    except:
-        try:
-            temp_df = pd.read_csv(file, encoding="latin1")
-        except:
-            try:
-                temp_df = pd.read_csv(file, encoding="ISO-8859-1", encoding_errors="ignore")
-            except:
-                st.warning(f"Could not read file: {file.name}")
-                continue
+    df = pd.concat(df_list, ignore_index=True)
 
-    if temp_df.empty:
-        st.warning(f"File {file.name} is empty. Skipping.")
-        continue
+    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    categorical_cols = df.select_dtypes(include='object').columns.tolist()
 
-    temp_df["Source_File"] = file.name
-    df_list.append(temp_df)
+    # -----------------------------
+    # SIDEBAR FILTERS
+    # -----------------------------
+    st.sidebar.header("📌 Filters")
 
-# Safety check before concat
-if len(df_list) == 0:
-    st.error("No valid CSV files were loaded.")
-    st.stop()
+    if len(categorical_cols) > 0:
+        filter_column = st.sidebar.selectbox("Select Category Filter", categorical_cols)
+        unique_values = df[filter_column].dropna().unique()
+        selected_value = st.sidebar.multiselect("Choose Values", unique_values, default=unique_values)
+        df = df[df[filter_column].isin(selected_value)]
 
-df = pd.concat(df_list, ignore_index=True)
+    metric = st.sidebar.selectbox("Select KPI Metric", numeric_cols)
 
-# -----------------------------------------
-# NUMERIC COLUMN CHECK
-# -----------------------------------------
-numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+    # -----------------------------
+    # KPI SECTION
+    # -----------------------------
+    total = df[metric].sum()
+    avg = df[metric].mean()
+    max_val = df[metric].max()
+    min_val = df[metric].min()
 
-if not numeric_cols:
-    st.error("No numeric columns found in uploaded data.")
-    st.stop()
+    col1, col2, col3, col4 = st.columns(4)
 
-metric = st.sidebar.selectbox("Select KPI Metric", numeric_cols)
+    col1.metric("💰 Total", f"{total:,.2f}")
+    col2.metric("📈 Average", f"{avg:,.2f}")
+    col3.metric("⬆ Maximum", f"{max_val:,.2f}")
+    col4.metric("⬇ Minimum", f"{min_val:,.2f}")
 
-# -----------------------------------------
-# KPI SECTION
-# -----------------------------------------
-total = df[metric].sum()
-avg = df[metric].mean()
-max_val = df[metric].max()
-min_val = df[metric].min()
+    st.markdown("---")
 
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total", f"{total:,.2f}")
-col2.metric("Average", f"{avg:,.2f}")
-col3.metric("Maximum", f"{max_val:,.2f}")
-col4.metric("Minimum", f"{min_val:,.2f}")
+    # -----------------------------
+    # MAIN CHART AREA
+    # -----------------------------
+    colA, colB = st.columns(2)
 
-st.markdown("---")
+    with colA:
+        fig_trend = px.line(
+            df,
+            y=metric,
+            color="Source_File",
+            title="Performance Trend",
+            template="plotly_dark"
+        )
+        st.plotly_chart(fig_trend, use_container_width=True)
 
-# -----------------------------------------
-# TREND CHART
-# -----------------------------------------
-st.subheader("📈 Trend Analysis")
-fig_line = px.line(df, y=metric, color="Source_File", template="plotly_dark")
-st.plotly_chart(fig_line, use_container_width=True)
+    with colB:
+        fig_dist = px.histogram(
+            df,
+            x=metric,
+            color="Source_File",
+            title="Distribution Analysis",
+            template="plotly_dark"
+        )
+        st.plotly_chart(fig_dist, use_container_width=True)
 
-# -----------------------------------------
-# SCATTER PLOT
-# -----------------------------------------
-st.subheader("🔵 Scatter Plot")
-fig_scatter = px.scatter(df, x=df.index, y=metric,
-                         color="Source_File",
-                         template="plotly_dark")
-st.plotly_chart(fig_scatter, use_container_width=True)
+    # -----------------------------
+    # CONTRIBUTION PIE
+    # -----------------------------
+    summary = df.groupby("Source_File")[metric].sum().reset_index()
 
-# -----------------------------------------
-# HISTOGRAM
-# -----------------------------------------
-st.subheader("📊 Distribution")
-fig_hist = px.histogram(df, x=metric, nbins=30,
-                        color="Source_File",
-                        template="plotly_dark")
-st.plotly_chart(fig_hist, use_container_width=True)
-
-# -----------------------------------------
-# ANOMALY DETECTION
-# -----------------------------------------
-st.subheader("🚨 Anomaly Detection (Isolation Forest)")
-
-iso = IsolationForest(contamination=0.05, random_state=42)
-df["Anomaly"] = iso.fit_predict(df[[metric]])
-anomalies = df[df["Anomaly"] == -1]
-
-fig_anomaly = go.Figure()
-
-fig_anomaly.add_trace(go.Scatter(
-    x=df.index,
-    y=df[metric],
-    mode="markers",
-    name="Normal",
-    marker=dict(color="blue")
-))
-
-fig_anomaly.add_trace(go.Scatter(
-    x=anomalies.index,
-    y=anomalies[metric],
-    mode="markers",
-    name="Anomaly",
-    marker=dict(color="red", size=10)
-))
-
-fig_anomaly.update_layout(template="plotly_dark")
-st.plotly_chart(fig_anomaly, use_container_width=True)
-
-st.info(f"Total Anomalies Detected: {len(anomalies)}")
-
-# -----------------------------------------
-# LSTM FORECASTING
-# -----------------------------------------
-st.subheader("🔮 LSTM Deep Learning Forecast")
-
-data = df[metric].values.reshape(-1, 1)
-
-scaler = MinMaxScaler()
-scaled_data = scaler.fit_transform(data)
-
-sequence_length = 10
-
-if len(scaled_data) > sequence_length:
-
-    X, y = [], []
-
-    for i in range(sequence_length, len(scaled_data)):
-        X.append(scaled_data[i-sequence_length:i])
-        y.append(scaled_data[i])
-
-    X = np.array(X)
-    y = np.array(y)
-
-    model = Sequential()
-    model.add(LSTM(50, input_shape=(X.shape[1], 1)))
-    model.add(Dense(1))
-    model.compile(optimizer="adam", loss="mse")
-
-    model.fit(X, y, epochs=10, batch_size=16, verbose=0)
-
-    last_sequence = scaled_data[-sequence_length:]
-    future_predictions = []
-    current_sequence = last_sequence
-
-    for _ in range(10):
-        prediction = model.predict(current_sequence.reshape(1, sequence_length, 1), verbose=0)
-        future_predictions.append(prediction[0, 0])
-        current_sequence = np.append(current_sequence[1:], prediction)
-
-    future_predictions = scaler.inverse_transform(
-        np.array(future_predictions).reshape(-1, 1)
+    fig_pie = px.pie(
+        summary,
+        names="Source_File",
+        values=metric,
+        title="Revenue Contribution by Data Source",
+        template="plotly_dark"
     )
 
-    fig_forecast = go.Figure()
+    st.plotly_chart(fig_pie, use_container_width=True)
 
-    fig_forecast.add_trace(go.Scatter(
-        y=df[metric],
-        mode='lines',
-        name="Actual"
-    ))
+    # -----------------------------
+    # CATEGORY PERFORMANCE
+    # -----------------------------
+    if len(categorical_cols) > 0:
+        category = st.selectbox("Select Category for Comparison", categorical_cols)
 
-    future_index = list(range(len(df), len(df)+10))
+        grouped = df.groupby(category)[metric].mean().reset_index()
 
-    fig_forecast.add_trace(go.Scatter(
-        x=future_index,
-        y=future_predictions.flatten(),
-        mode='lines',
-        name="LSTM Forecast",
-        line=dict(color="green")
-    ))
+        fig_bar = px.bar(
+            grouped,
+            x=category,
+            y=metric,
+            title="Category Performance Comparison",
+            template="plotly_dark"
+        )
 
-    fig_forecast.update_layout(template="plotly_dark")
-    st.plotly_chart(fig_forecast, use_container_width=True)
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    # -----------------------------
+    # CORRELATION MATRIX
+    # -----------------------------
+    if len(numeric_cols) > 1:
+
+        corr = df[numeric_cols].corr()
+
+        fig_heat = go.Figure(data=go.Heatmap(
+            z=corr.values,
+            x=corr.columns,
+            y=corr.columns
+        ))
+
+        fig_heat.update_layout(
+            title="Correlation Matrix",
+            template="plotly_dark"
+        )
+
+        st.plotly_chart(fig_heat, use_container_width=True)
+
+    # -----------------------------
+    # EXECUTIVE INSIGHTS SECTION
+    # -----------------------------
+    st.markdown("### 🧠 Executive Insights")
+
+    if total > avg * len(df):
+        insight = "Overall performance indicates strong cumulative growth."
+    else:
+        insight = "Performance consistency needs monitoring."
+
+    if max_val > avg * 1.5:
+        anomaly = "High positive spike detected in dataset."
+    else:
+        anomaly = "No extreme spikes detected."
+
+    st.info(f"""
+    • Total {metric} across uploaded files: {total:,.2f}  
+    • Average {metric}: {avg:,.2f}  
+    • Insight: {insight}  
+    • Risk Flag: {anomaly}
+    """)
 
 else:
-    st.warning("Not enough data for LSTM forecasting.")
-
-# -----------------------------------------
-# CORRELATION HEATMAP
-# -----------------------------------------
-if len(numeric_cols) > 1:
-    st.subheader("🔥 Correlation Heatmap")
-
-    corr = df[numeric_cols].corr()
-
-    fig_heat = go.Figure(data=go.Heatmap(
-        z=corr.values,
-        x=corr.columns,
-        y=corr.columns
-    ))
-
-    fig_heat.update_layout(template="plotly_dark")
-    st.plotly_chart(fig_heat, use_container_width=True)
-
-# -----------------------------------------
-# AI GENERATED REPORT
-# -----------------------------------------
-st.markdown("## 🧠 AI Generated Executive Report")
-
-trend_direction = "increasing"
-if 'future_predictions' in locals():
-    if future_predictions[-1] < avg:
-        trend_direction = "declining"
-
-report = f"""
-The system analyzed {len(df)} records across {len(uploaded_files)} datasets.
-
-Total {metric}: {round(total,2)}
-Average {metric}: {round(avg,2)}
-Maximum: {round(max_val,2)}
-Minimum: {round(min_val,2)}
-
-Isolation Forest detected {len(anomalies)} anomalies.
-
-The LSTM model predicts a {trend_direction} trend
-for the next 10 periods.
-
-Strategic planning should align with projected movement
-while monitoring anomaly spikes.
-"""
-
-st.success(report)
+    st.info("Upload business datasets to generate executive dashboard.")
