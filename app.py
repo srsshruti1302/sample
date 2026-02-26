@@ -8,6 +8,10 @@ from sklearn.cluster import KMeans
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score, mean_squared_error
 
+# =====================================================
+# PAGE CONFIG
+# =====================================================
+
 st.set_page_config(page_title="AI Executive BI System", layout="wide")
 st.title("🚀 AI-Powered Executive Business Intelligence System")
 
@@ -36,7 +40,7 @@ for file in uploaded_files:
     temp_df["Source_File"] = file.name
     df_list.append(temp_df)
 
-if len(df_list) == 0:
+if not df_list:
     st.error("No valid files uploaded.")
     st.stop()
 
@@ -50,17 +54,16 @@ numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 categorical_cols = df.select_dtypes(include="object").columns.tolist()
 
 if not numeric_cols:
-    st.error("No numeric columns found for analysis.")
+    st.error("No numeric columns found.")
     st.stop()
 
 metric = st.sidebar.selectbox("Select KPI Metric", numeric_cols)
 
-# Clean selected metric
 df[metric] = pd.to_numeric(df[metric], errors="coerce")
 df = df.replace([np.inf, -np.inf], np.nan)
 
 # =====================================================
-# NAVIGATION TABS
+# TABS
 # =====================================================
 
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -71,17 +74,17 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 # =====================================================
-# TAB 1 – OVERVIEW (LEVEL 1)
+# TAB 1 – OVERVIEW
 # =====================================================
 
 with tab1:
 
     st.subheader("📌 KPI Overview")
 
-    total = df[metric].sum()
-    avg = df[metric].mean()
-    max_val = df[metric].max()
-    min_val = df[metric].min()
+    total = df[metric].sum(skipna=True)
+    avg = df[metric].mean(skipna=True)
+    max_val = df[metric].max(skipna=True)
+    min_val = df[metric].min(skipna=True)
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Total", f"{total:,.2f}")
@@ -89,30 +92,41 @@ with tab1:
     col3.metric("Maximum", f"{max_val:,.2f}")
     col4.metric("Minimum", f"{min_val:,.2f}")
 
+    growth_percent = ((max_val - min_val) / abs(min_val)) * 100 if min_val != 0 else 0
+    st.metric("Overall Growth %", f"{round(growth_percent,2)}%")
+
     st.markdown("---")
 
-    # Trend Chart
-    fig_line = px.line(
-        df,
-        y=metric,
-        color="Source_File",
-        title="Trend Analysis",
-        template="plotly_dark"
-    )
+    # Trend
+    fig_line = px.line(df, y=metric, color="Source_File",
+                       template="plotly_dark",
+                       title="Trend Analysis")
     st.plotly_chart(fig_line, use_container_width=True)
 
     # Moving Average
     df["Moving_Avg"] = df[metric].rolling(5).mean()
 
-    fig_ma = px.line(
-        df,
-        y="Moving_Avg",
-        title="5-Period Moving Average",
-        template="plotly_dark"
-    )
+    fig_ma = px.line(df, y="Moving_Avg",
+                     template="plotly_dark",
+                     title="5-Period Moving Average")
     st.plotly_chart(fig_ma, use_container_width=True)
 
-    # Top & Bottom Performers
+    # Histogram
+    fig_hist = px.histogram(df, x=metric,
+                            color="Source_File",
+                            nbins=30,
+                            template="plotly_dark",
+                            title="Metric Distribution")
+    st.plotly_chart(fig_hist, use_container_width=True)
+
+    # Boxplot
+    fig_box = px.box(df, y=metric,
+                     color="Source_File",
+                     template="plotly_dark",
+                     title="Outlier & Spread Analysis")
+    st.plotly_chart(fig_box, use_container_width=True)
+
+    # Top / Bottom
     if categorical_cols:
         st.subheader("🏆 Top & Bottom Performers")
         cat = st.selectbox("Select Category", categorical_cols)
@@ -128,11 +142,9 @@ with tab1:
         colB.write("Bottom 5")
         colB.dataframe(bottom5)
 
-    st.download_button(
-        "Download Filtered Data",
-        df.to_csv(index=False),
-        "filtered_data.csv"
-    )
+    st.download_button("Download Processed Data",
+                       df.to_csv(index=False),
+                       "processed_data.csv")
 
 # =====================================================
 # TAB 2 – ANOMALY DETECTION
@@ -140,20 +152,18 @@ with tab1:
 
 with tab2:
 
-    st.subheader("🚨 Anomaly Detection (Isolation Forest)")
+    st.subheader("🚨 Anomaly Detection")
 
     clean_df = df.dropna(subset=[metric]).copy()
 
-    if len(clean_df) < 10:
-        st.warning("Not enough data for anomaly detection.")
-    else:
+    if len(clean_df) > 10:
+
         iso = IsolationForest(contamination=0.05, random_state=42)
         clean_df["Anomaly"] = iso.fit_predict(clean_df[[metric]])
 
         anomalies = clean_df[clean_df["Anomaly"] == -1]
 
         fig = go.Figure()
-
         fig.add_trace(go.Scatter(
             x=clean_df.index.tolist(),
             y=clean_df[metric].tolist(),
@@ -172,63 +182,50 @@ with tab2:
         st.plotly_chart(fig, use_container_width=True)
 
         st.success(f"Total anomalies detected: {len(anomalies)}")
+    else:
+        st.warning("Not enough data for anomaly detection.")
 
 # =====================================================
-# TAB 3 – FORECASTING + CLUSTERING
+# TAB 3 – FORECASTING + SEGMENTATION
 # =====================================================
 
 with tab3:
 
-    st.subheader("🔮 Forecasting (Linear Regression)")
+    st.subheader("🔮 Forecasting")
 
     forecast_df = df.dropna(subset=[metric]).reset_index(drop=True)
 
-    if len(forecast_df) < 5:
-        st.warning("Not enough clean data for forecasting.")
-    else:
-        X = np.arange(len(forecast_df)).reshape(-1, 1)
+    if len(forecast_df) > 5:
+
+        X = np.arange(len(forecast_df)).reshape(-1,1)
         y = forecast_df[metric].values
 
         model = LinearRegression()
-        model.fit(X, y)
+        model.fit(X,y)
 
         y_pred = model.predict(X)
 
-        r2 = r2_score(y, y_pred)
-        mse = mean_squared_error(y, y_pred)
-
-        # Future Forecast
         future_steps = 10
         future_x = np.arange(len(forecast_df),
-                             len(forecast_df) + future_steps).reshape(-1, 1)
-
+                             len(forecast_df)+future_steps).reshape(-1,1)
         future_pred = model.predict(future_x)
 
-        # Convert safely for Plotly
-        actual_x = X.flatten().tolist()
-        future_x = future_x.flatten().tolist()
-        y_pred = y_pred.flatten().tolist()
-        future_pred = future_pred.flatten().tolist()
-
         fig_forecast = go.Figure()
-
         fig_forecast.add_trace(go.Scatter(
-            x=actual_x,
-            y=forecast_df[metric].tolist(),
+            x=X.flatten().tolist(),
+            y=y.tolist(),
             mode="lines",
             name="Actual"
         ))
-
         fig_forecast.add_trace(go.Scatter(
-            x=actual_x,
-            y=y_pred,
+            x=X.flatten().tolist(),
+            y=y_pred.flatten().tolist(),
             mode="lines",
             name="Model Fit"
         ))
-
         fig_forecast.add_trace(go.Scatter(
-            x=future_x,
-            y=future_pred,
+            x=future_x.flatten().tolist(),
+            y=future_pred.flatten().tolist(),
             mode="lines",
             name="Forecast"
         ))
@@ -236,31 +233,52 @@ with tab3:
         fig_forecast.update_layout(template="plotly_dark")
         st.plotly_chart(fig_forecast, use_container_width=True)
 
-        st.info(f"Model R² Score: {round(r2,3)}")
-        st.info(f"Model MSE: {round(mse,3)}")
+        st.info(f"R² Score: {round(r2_score(y,y_pred),3)}")
+        st.info(f"MSE: {round(mean_squared_error(y,y_pred),3)}")
 
     # Clustering
-    st.subheader("📌 Business Segmentation (KMeans)")
+    if len(numeric_cols) >= 2:
 
-    clean_cluster = df.dropna()
+        cluster_df = df[numeric_cols].dropna().copy()
 
-    if len(numeric_cols) >= 2 and len(clean_cluster) > 10:
-        kmeans = KMeans(n_clusters=3, random_state=42)
-        clean_cluster["Cluster"] = kmeans.fit_predict(
-            clean_cluster[numeric_cols]
-        )
+        if len(cluster_df) > 10:
 
-        fig_cluster = px.scatter(
-            clean_cluster,
-            x=numeric_cols[0],
-            y=numeric_cols[1],
-            color="Cluster",
+            kmeans = KMeans(n_clusters=3, random_state=42)
+            cluster_df["Cluster"] = kmeans.fit_predict(cluster_df)
+
+            fig_cluster = px.scatter(cluster_df,
+                                     x=numeric_cols[0],
+                                     y=numeric_cols[1],
+                                     color="Cluster",
+                                     template="plotly_dark",
+                                     title="Business Segmentation")
+            st.plotly_chart(fig_cluster, use_container_width=True)
+
+    # Scatter Matrix
+    if len(numeric_cols) > 2:
+
+        fig_matrix = px.scatter_matrix(
+            df,
+            dimensions=numeric_cols[:4],
+            color="Source_File",
             template="plotly_dark"
         )
+        st.plotly_chart(fig_matrix, use_container_width=True)
 
-        st.plotly_chart(fig_cluster, use_container_width=True)
-    else:
-        st.warning("Need at least 2 numeric columns and sufficient data.")
+    # Correlation Heatmap
+    if len(numeric_cols) > 1:
+
+        corr = df[numeric_cols].corr()
+
+        fig_heat = go.Figure(data=go.Heatmap(
+            z=corr.values,
+            x=corr.columns,
+            y=corr.columns,
+            colorscale="Viridis"
+        ))
+
+        fig_heat.update_layout(template="plotly_dark")
+        st.plotly_chart(fig_heat, use_container_width=True)
 
 # =====================================================
 # TAB 4 – EXECUTIVE SUMMARY
@@ -268,28 +286,23 @@ with tab3:
 
 with tab4:
 
-    st.subheader("🧠 AI-Generated Executive Summary")
+    st.subheader("🧠 Executive Summary")
 
     total_records = len(df)
-
     growth = "increasing" if total > avg else "stable/declining"
 
     report = f"""
-    The system analyzed {total_records} records from {len(uploaded_files)} data sources.
+    The system analyzed {total_records} records from {len(uploaded_files)} sources.
 
     KPI Selected: {metric}
+    Total: {round(total,2)}
+    Average: {round(avg,2)}
 
-    Total Value: {round(total,2)}
-    Average Value: {round(avg,2)}
+    Anomaly detection performed.
+    Forecast indicates trend is {growth}.
 
-    Risk Analysis:
-    Anomaly detection was performed to identify abnormal spikes.
-
-    Predictive Insight:
-    Forecast indicates business trend is {growth}.
-
-    Strategic Recommendation:
-    Align business planning with predictive trends and monitor anomaly regions.
+    Recommendation:
+    Align strategic planning with predictive insights and monitor risk spikes.
     """
 
     st.success(report)
