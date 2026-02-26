@@ -40,10 +40,6 @@ for file in uploaded_files:
     temp_df["Source_File"] = file.name
     df_list.append(temp_df)
 
-if not df_list:
-    st.error("No valid files uploaded.")
-    st.stop()
-
 df = pd.concat(df_list, ignore_index=True)
 
 # =====================================================
@@ -97,7 +93,7 @@ with tab1:
 
     st.markdown("---")
 
-    # Trend
+    # Trend Chart
     fig_line = px.line(df, y=metric, color="Source_File",
                        template="plotly_dark",
                        title="Trend Analysis")
@@ -111,6 +107,22 @@ with tab1:
                      title="5-Period Moving Average")
     st.plotly_chart(fig_ma, use_container_width=True)
 
+    # CUMULATIVE GROWTH
+    df["Cumulative_Sum"] = df[metric].cumsum()
+
+    fig_cum = px.line(df, y="Cumulative_Sum",
+                      template="plotly_dark",
+                      title="Cumulative Growth Trend")
+    st.plotly_chart(fig_cum, use_container_width=True)
+
+    # VOLATILITY (Rolling Std Dev)
+    df["Rolling_STD"] = df[metric].rolling(5).std()
+
+    fig_vol = px.line(df, y="Rolling_STD",
+                      template="plotly_dark",
+                      title="Volatility (Rolling Standard Deviation)")
+    st.plotly_chart(fig_vol, use_container_width=True)
+
     # Histogram
     fig_hist = px.histogram(df, x=metric,
                             color="Source_File",
@@ -118,33 +130,6 @@ with tab1:
                             template="plotly_dark",
                             title="Metric Distribution")
     st.plotly_chart(fig_hist, use_container_width=True)
-
-    # Boxplot
-    fig_box = px.box(df, y=metric,
-                     color="Source_File",
-                     template="plotly_dark",
-                     title="Outlier & Spread Analysis")
-    st.plotly_chart(fig_box, use_container_width=True)
-
-    # Top / Bottom
-    if categorical_cols:
-        st.subheader("🏆 Top & Bottom Performers")
-        cat = st.selectbox("Select Category", categorical_cols)
-
-        grouped = df.groupby(cat)[metric].sum().reset_index()
-        top5 = grouped.sort_values(metric, ascending=False).head(5)
-        bottom5 = grouped.sort_values(metric).head(5)
-
-        colA, colB = st.columns(2)
-        colA.write("Top 5")
-        colA.dataframe(top5)
-
-        colB.write("Bottom 5")
-        colB.dataframe(bottom5)
-
-    st.download_button("Download Processed Data",
-                       df.to_csv(index=False),
-                       "processed_data.csv")
 
 # =====================================================
 # TAB 2 – ANOMALY DETECTION
@@ -183,7 +168,7 @@ with tab2:
 
         st.success(f"Total anomalies detected: {len(anomalies)}")
     else:
-        st.warning("Not enough data for anomaly detection.")
+        st.warning("Not enough data.")
 
 # =====================================================
 # TAB 3 – FORECASTING + SEGMENTATION
@@ -211,24 +196,9 @@ with tab3:
         future_pred = model.predict(future_x)
 
         fig_forecast = go.Figure()
-        fig_forecast.add_trace(go.Scatter(
-            x=X.flatten().tolist(),
-            y=y.tolist(),
-            mode="lines",
-            name="Actual"
-        ))
-        fig_forecast.add_trace(go.Scatter(
-            x=X.flatten().tolist(),
-            y=y_pred.flatten().tolist(),
-            mode="lines",
-            name="Model Fit"
-        ))
-        fig_forecast.add_trace(go.Scatter(
-            x=future_x.flatten().tolist(),
-            y=future_pred.flatten().tolist(),
-            mode="lines",
-            name="Forecast"
-        ))
+        fig_forecast.add_trace(go.Scatter(x=X.flatten(), y=y, mode="lines", name="Actual"))
+        fig_forecast.add_trace(go.Scatter(x=X.flatten(), y=y_pred, mode="lines", name="Model Fit"))
+        fig_forecast.add_trace(go.Scatter(x=future_x.flatten(), y=future_pred, mode="lines", name="Forecast"))
 
         fig_forecast.update_layout(template="plotly_dark")
         st.plotly_chart(fig_forecast, use_container_width=True)
@@ -254,32 +224,6 @@ with tab3:
                                      title="Business Segmentation")
             st.plotly_chart(fig_cluster, use_container_width=True)
 
-    # Scatter Matrix
-    if len(numeric_cols) > 2:
-
-        fig_matrix = px.scatter_matrix(
-            df,
-            dimensions=numeric_cols[:4],
-            color="Source_File",
-            template="plotly_dark"
-        )
-        st.plotly_chart(fig_matrix, use_container_width=True)
-
-    # Correlation Heatmap
-    if len(numeric_cols) > 1:
-
-        corr = df[numeric_cols].corr()
-
-        fig_heat = go.Figure(data=go.Heatmap(
-            z=corr.values,
-            x=corr.columns,
-            y=corr.columns,
-            colorscale="Viridis"
-        ))
-
-        fig_heat.update_layout(template="plotly_dark")
-        st.plotly_chart(fig_heat, use_container_width=True)
-
 # =====================================================
 # TAB 4 – EXECUTIVE SUMMARY
 # =====================================================
@@ -288,21 +232,11 @@ with tab4:
 
     st.subheader("🧠 Executive Summary")
 
-    total_records = len(df)
-    growth = "increasing" if total > avg else "stable/declining"
-
     report = f"""
-    The system analyzed {total_records} records from {len(uploaded_files)} sources.
-
+    Total Records: {len(df)}
     KPI Selected: {metric}
-    Total: {round(total,2)}
-    Average: {round(avg,2)}
-
-    Anomaly detection performed.
-    Forecast indicates trend is {growth}.
-
-    Recommendation:
-    Align strategic planning with predictive insights and monitor risk spikes.
+    Total Value: {round(total,2)}
+    Forecast Trend: Strategic monitoring recommended.
     """
 
     st.success(report)
